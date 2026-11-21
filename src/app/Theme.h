@@ -8,6 +8,9 @@
 // render deterministically.
 
 #include "common.h"
+// gdiplus.h needs IStream/PROPID, which WIN32_LEAN_AND_MEAN strips from
+// windows.h - objidl.h restores them.
+#include <objidl.h>
 #include <gdiplus.h>
 
 namespace micp {
