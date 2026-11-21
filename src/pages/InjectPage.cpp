@@ -157,7 +157,7 @@ InjectPage::InjectPage(QWidget* parent)
                  m_dll, config));
 
     m_keyword = new LineEdit(config);
-    m_keyword->setPlaceholder(QStringLiteral("窗口标题包含的关键字"));
+    m_keyword->setPlaceholderText(QStringLiteral("窗口标题包含的关键字"));
     config->contentLayout()->addWidget(
         fieldRow(QStringLiteral("窗口关键字"),
                  QStringLiteral("注入器据此定位目标 Java 窗口（默认“布吉岛”，可在服务端调整）"),

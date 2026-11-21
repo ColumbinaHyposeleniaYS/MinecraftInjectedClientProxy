@@ -3,6 +3,7 @@
 #include "app/Page.h"
 #include "app/Widgets.h"
 
+class Card;
 class EmptyState;
 class IconButton;
 class SegmentedControl;
@@ -44,7 +45,7 @@ private:
     ToggleSwitch* m_follow = nullptr;
     StyledLabel* m_sourceLabel = nullptr;
     EmptyState* m_empty = nullptr;
-    QWidget* m_viewCard = nullptr;
+    Card* m_viewCard = nullptr;
     QString m_sourcePath;
 
     struct Entry

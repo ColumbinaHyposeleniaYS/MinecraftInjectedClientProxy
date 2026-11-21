@@ -133,7 +133,7 @@ void AppButton::paintEvent(QPaintEvent*)
 
     const QRectF rect = QRectF(this->rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     const QColor fill = fillColor();
-    const QColor text = textColor();
+    const QColor contentColor = textColor();
 
     if (fill != Qt::transparent)
     {
@@ -163,7 +163,7 @@ void AppButton::paintEvent(QPaintEvent*)
         if (m_loading)
         {
             // Spinner arc.
-            QPen pen(text);
+            QPen pen(contentColor);
             pen.setWidthF(1.8);
             pen.setCapStyle(Qt::RoundCap);
             p.setPen(pen);
@@ -174,12 +174,13 @@ void AppButton::paintEvent(QPaintEvent*)
         }
         else
         {
-            Icons::paint(p, m_icon, QRectF(x, iconY, kIconExtent, kIconExtent), text, 1.5);
+            Icons::paint(p, m_icon, QRectF(x, iconY, kIconExtent, kIconExtent), contentColor,
+                         1.5);
         }
         x += kIconExtent + 8;
     }
 
-    p.setPen(text);
+    p.setPen(contentColor);
     p.drawText(QRect(x, 0, textWidth + 4, height()), Qt::AlignVCenter | Qt::TextSingleLine,
                text());
 }

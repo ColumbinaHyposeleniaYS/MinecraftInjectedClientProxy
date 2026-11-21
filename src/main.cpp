@@ -15,7 +15,7 @@ int main(int argc, char* argv[])
 
     Theme::applyApplicationFont();
     QApplication::setPalette(Theme::buildPalette());
-    QApplication::setStyleSheet(Theme::globalQss());
+    app.setStyleSheet(Theme::globalQss());
 
     MainWindow window;
     window.show();

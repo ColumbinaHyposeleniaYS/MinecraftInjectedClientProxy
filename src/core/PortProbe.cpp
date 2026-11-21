@@ -1,5 +1,7 @@
 #include "core/PortProbe.h"
 
+#include <QByteArray>
+
 #include <iphlpapi.h>
 
 namespace {
@@ -14,7 +16,8 @@ quint16 hostPort(DWORD networkPort)
 template <typename Predicate>
 bool walkTable(bool listenersOnly, DWORD pid, quint16 port, Predicate&& predicate)
 {
-    const ULONG tableId = listenersOnly ? TCP_TABLE_OWNER_PID_LISTENER : TCP_TABLE_OWNER_PID_ALL;
+    const TCP_TABLE_CLASS tableId =
+        listenersOnly ? TCP_TABLE_OWNER_PID_LISTENER : TCP_TABLE_OWNER_PID_ALL;
     ULONG size = 0;
     DWORD rc = GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET, tableId, 0);
     if (rc != ERROR_INSUFFICIENT_BUFFER || size == 0)
@@ -52,7 +55,7 @@ bool PortProbe::isListening(DWORD pid, quint16 port)
 
 int PortProbe::establishedCount(DWORD pid, quint16 port)
 {
-    const ULONG tableId = TCP_TABLE_OWNER_PID_ALL;
+    const TCP_TABLE_CLASS tableId = TCP_TABLE_OWNER_PID_ALL;
     ULONG size = 0;
     DWORD rc = GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET, tableId, 0);
     if (rc != ERROR_INSUFFICIENT_BUFFER || size == 0)

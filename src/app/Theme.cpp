@@ -294,7 +294,7 @@ QPalette Theme::buildPalette()
 QString Theme::globalQss()
 {
     const Palette& p = pal();
-    const QString colorStr = [](const QColor& c) {
+    const auto colorStr = [](const QColor& c) {
         return c.name(QColor::HexArgb);
     };
 

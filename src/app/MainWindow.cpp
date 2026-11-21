@@ -29,6 +29,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QUrl>
+#include <QWindow>
 
 #include <windows.h>
 #include <windowsx.h>

@@ -1,5 +1,6 @@
 #include "app/Stepper.h"
 
+#include "app/Icons.h"
 #include "app/Theme.h"
 
 #include <QPainter>
@@ -122,8 +123,9 @@ void Stepper::paintEvent(QPaintEvent*)
             QColor connector = pal.separator;
             if (row.state == StepState::Done)
                 connector = pal.success;
-            p.setPen(QPen(connector, 2.0));
-            p.setCapStyle(Qt::RoundCap);
+            QPen connectorPen(connector, 2.0);
+            connectorPen.setCapStyle(Qt::RoundCap);
+            p.setPen(connectorPen);
             p.drawLine(QPointF(centerX, centerY + kGlyphSize / 2.0 + 3.0),
                        QPointF(centerX, nextY + kGlyphSize / 2.0 - 3.0));
         }
