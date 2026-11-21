@@ -246,6 +246,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
         return 1;
 
     g_app.Init(hwnd);
+
+    // Guard against a saved placement that is fully off-screen (e.g. the
+    // monitor was disconnected) - otherwise the window would be invisible.
+    if (st.hasPlacement && !MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL))
+    {
+        RECT wa = {};
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+        SetWindowPos(hwnd, nullptr,
+                     wa.left + ((wa.right - wa.left) - defW) / 2,
+                     wa.top + ((wa.bottom - wa.top) - defH) / 2, defW, defH,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
     ShowWindow(hwnd, st.maximized ? SW_SHOWMAXIMIZED : SW_SHOW);
     UpdateWindow(hwnd);
 
