@@ -172,11 +172,6 @@ void PathLines(Gdiplus::Graphics& g, std::initializer_list<Pt> pts, Gdiplus::Pen
     PathPolyPts(g, pts.begin(), int(pts.size()), pen, false);
 }
 
-void PathPoly(Gdiplus::Graphics& g, std::initializer_list<Pt> pts, Gdiplus::Pen& pen)
-{
-    PathPolyPts(g, pts.begin(), int(pts.size()), pen, true);
-}
-
 } // namespace
 
 void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::Color& c,
@@ -190,7 +185,6 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     g.SetTransform(&m);
     g.SetPageUnit(Gdiplus::UnitPixel);
 
-    const float k = box.w / 24.0f;
     // Pen widths are expressed in the 24x24 design space; the world
     // transform below scales them to the box automatically.
     Gdiplus::Pen pen(c, strokeW);

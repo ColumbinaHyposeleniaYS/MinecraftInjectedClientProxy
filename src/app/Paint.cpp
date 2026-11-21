@@ -245,7 +245,6 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
             const float y = rowY0 + i * float(S(30));
             ui::Text(g, rows[i].label, FSmall, pal.text2,
                      RectF(labelX, y, labelW, float(S(30))));
-            const float vw = ui::MeasureText(rows[i].value, FBody);
             RectF vr(labelX + labelW, y, L.ovInfo.w - labelW - float(S(36)) - float(S(200)), float(S(30)));
             if (rows[i].hasState)
                 vr.w -= float(S(90));
@@ -505,7 +504,6 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
 static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
 {
     const Pal& pal = Palette();
-    App& app = g_app;
 
     ui::Text(g, L"\u8bbe\u7f6e", FTitle, pal.text, // 设置
              RectF(L.pageBox.x, L.pageTop, L.pageBox.w, float(LineH(FTitle))));
@@ -565,7 +563,6 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
 static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
 {
     const Pal& pal = Palette();
-    App& app = g_app;
 
     // app glyph: rounded square with a vertical accent gradient + white bolt
     {
