@@ -20,11 +20,6 @@ concurrency:
 permissions:
   contents: write
 
-env:
-  QT_VERSION: '6.8.3' # LTS, satisfies the Qt 6.5+ requirement
-  QT_ARCH: win64_msvc2022_64
-  QT_HOME: 'C:\Qt' # shared between runs via the cache below
-
 jobs:
   release:
     name: Build & publish (Windows x64)
@@ -51,28 +46,13 @@ jobs:
           "version=$($t.Substring(1))" >> $env:GITHUB_OUTPUT
           "prerelease=$($isPre ? 'true' : 'false')" >> $env:GITHUB_OUTPUT
 
-      - name: Cache Qt
-        id: qt
-        uses: actions/cache@v4
+      - name: Setup MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          path: ${{ env.QT_HOME }}
-          key: qt-${{ env.QT_VERSION }}-${{ env.QT_ARCH }}-v1
-
-      - name: Install Qt ${{ env.QT_VERSION }} (aqtinstall)
-        if: steps.qt.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade aqtinstall
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_ARCH -O $env:QT_HOME
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          arch: x64
 
       - name: Configure (CMake)
-        shell: pwsh
-        run: |
-          $qtDir = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64"
-          cmake -S . -B build "-DCMAKE_PREFIX_PATH=$qtDir" "-DMICP_APP_VERSION=${{ steps.tag.outputs.version }}"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+        run: cmake -S . -B build "-DMICP_APP_VERSION=${{ steps.tag.outputs.version }}"
 
       - name: Build (Release)
         run: cmake --build build --config Release --parallel
@@ -80,15 +60,21 @@ jobs:
       - name: Package portable bundle
         shell: pwsh
         run: |
-          $qtBin = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64\bin"
           $app = 'MinecraftInjectedClientProxy'
           $tag = '${{ steps.tag.outputs.tag }}'
           $bundle = "package\$app"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
-          Copy-Item "build\Release\$app.exe" -Destination $bundle
+          Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
-          & "$qtBin\windeployqt.exe" --release --no-translations "$bundle\$app.exe"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $bundledDll = $false
+          if (Test-Path "Aurora.dll" -PathType Leaf) {
+            Copy-Item "Aurora.dll" -Destination $bundle
+            $bundledDll = $true
+            Write-Host "Bundled Aurora.dll from the repository root."
+          } else {
+            Write-Host "No Aurora.dll in the repository root - shipping the GUI only."
+          }
+          "bundledDll=$($bundledDll ? 'true' : 'false')" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $zipName = "$app-$tag-win64.zip"
           $zip = "dist\$zipName"
@@ -115,6 +101,11 @@ jobs:
           }
           $changelog = (@($commits) | Select-Object -First 40) -join "`n"
           if (-not $changelog) { $changelog = '- 初始发布' }
+          $dllNote = if ('${{ env.bundledDll }}' -eq 'true') {
+            '- `Aurora.dll`（代理核心）已随包附带，与程序放在同一目录即可使用'
+          } else {
+            '- 代理 DLL（`Aurora.dll`）不随包分发：请将其放置到本程序同目录（或在「注入」页手动选择）。若希望随包分发，可将 `Aurora.dll` 提交到仓库根目录，CI 之后会自动打包'
+          }
           # NOTE: the here-string body below sits at the script's column 0 after
           # YAML strips the common indentation - required by PowerShell syntax.
           $template = @'
@@ -122,7 +113,7 @@ jobs:
 
           | 文件 | 说明 |
           | --- | --- |
-          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（已内嵌 Qt 运行库） |
+          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（单文件 exe，无任何运行时依赖） |
           | `checksums.sha256` | SHA-256 校验和 |
 
           ## 更新内容 __TAG__
@@ -132,21 +123,21 @@ jobs:
           ## 运行要求
 
           - Windows 10 / 11（x64）
-          - Microsoft Visual C++ 运行库（x64）：绝大多数系统已内置；若启动时提示缺少 `VCRUNTIME140.dll`，请安装 [vc_redist.x64](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-          - 代理 DLL（`Aurora.dll`）不随包分发，请自行放置到本程序同目录（或在「注入」页手动选择）
+          - 无需安装任何运行库：本程序为纯 Win32 实现，不依赖 Qt / .NET / VC++ Redist
+          __DLLNOTE__
 
           ## 快速上手
 
           1. 解压到任意目录，运行 `MinecraftInjectedClientProxy.exe`
           2. 启动 A 客户端并进入目标服务器
-          3. 在「注入」页点击「开始注入」（默认匹配标题含「布吉岛」的 Java 窗口，可在设置中修改）
+          3. 在「注入」页点击「开始注入」（默认匹配标题含「布吉岛」的 Java 窗口，可修改）
           4. B 客户端使用「直接连接」访问 `127.0.0.1:25565`
 
           完整说明见压缩包内的 `README.md`。仅供学习交流使用，请遵守所玩服务器的规则。
 
-          > 构建信息：`__TAG__` @ `__SHA__` · Qt __QT__ LTS / MSVC x64
+          > 构建信息：`__TAG__` @ `__SHA__` · MSVC x64 · 纯 Win32 / GDI+
           '@
-          $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__QT__', $env:QT_VERSION).Replace('__CHANGELOG__', $changelog)
+          $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__CHANGELOG__', $changelog).Replace('__DLLNOTE__', $dllNote)
           $notes | Out-File -FilePath release-notes.md -Encoding utf8
           Get-Content release-notes.md
 

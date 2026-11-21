@@ -1,60 +1,39 @@
 #pragma once
+// Periodic proxy health snapshot: is the game window around, is the injected
+// proxy still listening, how many B clients are attached.
 
-#include <QObject>
-#include <QString>
-#include <QTimer>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
+#include "common.h"
 
-/*
- * Everything the overview page needs to know about the world right now:
- * is there a matching game window, is the observed proxy alive / listening,
- * and how many B clients are attached.
- */
+namespace micp {
+
 struct ProxySnapshot
 {
-    bool windowFound = false;   // a game window matching the keyword exists
-    QString windowTitle;
+    bool windowFound = false;
+    std::wstring windowTitle;
     DWORD windowPid = 0;
 
-    bool observing = false;     // we have a target pid under observation
+    bool observing = false;  // we have adopted a pid to watch
     DWORD pid = 0;
     bool alive = false;
     bool listening = false;
+    bool wasActive = false;  // saw the listener up at least once
     int bConnections = 0;
-    bool wasActive = false;     // listener seen at least once since observe()
 };
 
-/*
- * Polls the machine once a second on the GUI thread. Also auto-adopts an
- * already-injected game (matching window + listener on the proxy port) so
- * the UI shows "running" immediately after the app starts.
- */
-class ProxyMonitor : public QObject
+class ProxyMonitor
 {
-    Q_OBJECT
-
 public:
-    explicit ProxyMonitor(QObject* parent = nullptr);
+    void Configure(const std::wstring& keyword, uint16_t port);
+    void Observe(DWORD pid);
+    void ClearObservation();
 
-    void setKeyword(const QString& keyword);
-    void setPort(quint16 port);
-    void observe(DWORD pid);    // focus on an explicit target (post injection)
-    void clearObservation();
-
-signals:
-    void snapshotUpdated(const ProxySnapshot& snapshot);
-
-private slots:
-    void tick();
+    ProxySnapshot Tick();
 
 private:
-    QTimer m_timer;
-    QString m_keyword;
-    quint16 m_port = 25565;
+    std::wstring m_keyword;
+    uint16_t m_port = 25565;
     DWORD m_pid = 0;
     bool m_wasActive = false;
 };
+
+} // namespace micp

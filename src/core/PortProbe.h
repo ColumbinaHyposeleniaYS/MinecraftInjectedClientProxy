@@ -1,20 +1,13 @@
 #pragma once
+// TCP table probes: is the injected proxy listening, how many B clients are
+// attached right now. Uses GetExtendedTcpTable so no sockets are opened.
 
-#include <QtGlobal>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
+#include "common.h"
+#include <cstdint>
 
-/*
- * Passive probing of the TCP table: is the injected proxy of a given process
- * listening on its port, and how many established (B client) connections
- * does it currently own?
- */
-class PortProbe
-{
-public:
-    static bool isListening(DWORD pid, quint16 port);
-    static int establishedCount(DWORD pid, quint16 port);
-};
+namespace micp::PortProbe {
+
+bool IsListening(DWORD pid, uint16_t port);
+int EstablishedCount(DWORD pid, uint16_t port);
+
+} // namespace micp::PortProbe

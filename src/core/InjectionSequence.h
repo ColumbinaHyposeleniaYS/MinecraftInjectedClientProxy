@@ -1,66 +1,63 @@
 #pragma once
+// Drives one complete injection run off the UI thread:
+//
+//   WaitWindow -> Injecting -> WaitPort -> Done / Failed / Cancelled
+//
+// The worker is a plain Win32 thread; progress is published into a small
+// snapshot guarded by an SRWLOCK and the UI is notified with PostMessage.
 
-#include <QMetaType>
-#include <QObject>
-#include <QString>
-
+#include "common.h"
 #include <atomic>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
 
-class QThread;
+namespace micp {
 
-/*
- * Drives one complete injection run off the UI thread:
- *
- *   WaitWindow -> Injecting -> WaitPort -> Done
- *
- * Each phase can be cancelled; progress is reported through queued signals.
- * The sequence is a one-shot object driven by start(); it owns a worker
- * thread that is created per run.
- */
-class InjectionSequence : public QObject
+class InjectionSequence
 {
-    Q_OBJECT
-
 public:
     enum class State { Idle, WaitWindow, Injecting, WaitPort, Done, Failed, Cancelled };
-    Q_ENUM(State)
 
     struct Config
     {
-        QString dllPath;
-        QString keyword;
-        quint16 port = 25565;
+        std::wstring dllPath;
+        std::wstring keyword;
+        uint16_t port = 25565;
     };
 
-    explicit InjectionSequence(QObject* parent = nullptr);
+    struct Progress
+    {
+        State state = State::Idle;
+        DWORD pid = 0;
+        std::wstring windowTitle;
+        int waitMs = 0;
+        int waitTotal = 30000;
+        std::wstring message;
+        bool ok = false;
+        bool resumed = false;
+    };
 
-    bool isRunning() const { return m_running; }
-    State state() const { return static_cast<State>(m_state.load()); }
+    // Returns false when a run is already in progress.
+    bool Start(HWND notify, const Config& config);
+    void Cancel();
+    void Shutdown(); // cancel + brief join, called on app quit
 
-    void start(const Config& config);
-    void cancel();
-    void shutdown(); // cancel + brief join, called on app quit
+    bool IsRunning() const { return m_running.load(); }
+    Progress Snapshot() const;
 
-signals:
-    void stateChanged(InjectionSequence::State state);
-    void targetFound(quint32 pid, const QString& windowTitle);
-    void waitPortProgress(int elapsedMs, int totalMs);
-    void finished(bool ok, bool resumed, const QString& message);
+    static constexpr UINT kMsgProgress = WM_APP + 1; // posted on every change
+    static constexpr UINT kMsgFinished = WM_APP + 2; // posted once at the end
 
 private:
-    void run(const Config& config);
-    void setState(State state);
-    void finish(State finalState, bool ok, bool resumed, const QString& message);
+    static DWORD WINAPI ThreadProc(LPVOID param);
+    void Run(Config config);
+    void Publish(const Progress& p, bool finished);
 
-    std::atomic_bool m_running{false};
-    std::atomic_bool m_cancel{false};
-    std::atomic<int> m_state{int(State::Idle)};
-    QThread* m_thread = nullptr; // only touched from the GUI thread
+    HWND m_hwnd = nullptr;
+    HANDLE m_thread = nullptr;
+    Config m_cfg; // copied in Start() before the thread is created
+    std::atomic<bool> m_running{false};
+    std::atomic<bool> m_cancel{false};
+    mutable SRWLOCK m_lock = SRWLOCK_INIT;
+    Progress m_progress;
 };
 
-Q_DECLARE_METATYPE(InjectionSequence::State)
+} // namespace micp

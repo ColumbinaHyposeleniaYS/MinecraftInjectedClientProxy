@@ -1,63 +1,39 @@
 #pragma once
+// Persisted application settings, stored as an INI file inside
+// %APPDATA%\MinecraftInjectedClientProxy (same file layout as earlier
+// releases, so existing configs keep working).
 
-#include <QByteArray>
-#include <QObject>
-#include <QString>
+#include "app/Theme.h"
+#include "common.h"
 
-class QSettings;
+namespace micp {
 
-/*
- * Persisted application settings. Stored as an INI file inside
- * %APPDATA%\MinecraftInjectedClientProxy so everything is portable and
- * easy to reset.
- */
-class Settings : public QObject
+struct SettingsData
 {
-    Q_OBJECT
+    ThemeMode theme = ThemeMode::System;
+    Backdrop backdrop = Backdrop::None;
 
-public:
-    enum class ThemePref { System, Light, Dark };
-    enum class Backdrop { None, Mica, Acrylic };
+    std::wstring dllPath;   // user-chosen override; empty -> auto-detect
+    std::wstring keyword;   // window title keyword (default 布吉岛)
+    int port = 25565;
 
-    static Settings* instance();
+    bool autoSwitchOnDone = true; // jump to the log page after success
+    bool toastOnDone = true;      // toast when a run finishes
 
-    ThemePref themePref() const;
-    void setThemePref(ThemePref pref);
+    std::wstring logPathOverride; // empty -> auto-detect candidates
+    bool followLog = true;        // keep the log view pinned to the bottom
 
-    Backdrop backdrop() const;
-    void setBackdrop(Backdrop backdrop);
-
-    QString dllPath() const;
-    void setDllPath(const QString& path);
-
-    QString windowKeyword() const;
-    void setWindowKeyword(const QString& keyword);
-
-    bool autoSwitchOnDone() const;
-    void setAutoSwitchOnDone(bool on);
-
-    bool toastOnDone() const;
-    void setToastOnDone(bool on);
-
-    QString logPathOverride() const;
-    void setLogPathOverride(const QString& path); // empty -> auto-detect
-
-    bool followLog() const;
-    void setFollowLog(bool on);
-
-    QByteArray windowGeometry() const;
-    void saveWindowGeometry(const QByteArray& geometry);
-
-    void resetAll(); // restore factory defaults (keeps window geometry)
-
-signals:
-    void themePrefChanged();
-    void backdropChanged();
-    void injectionSettingsChanged();
-    void logSettingsChanged();
-
-private:
-    explicit Settings();
-
-    QSettings* m_store;
+    // window placement (restored on start, saved on close)
+    bool hasPlacement = false;
+    int winX = 0, winY = 0, winW = 0, winH = 0;
+    bool maximized = false;
 };
+
+class SettingsStore
+{
+public:
+    static SettingsData Load();
+    static void Save(const SettingsData& data);
+};
+
+} // namespace micp

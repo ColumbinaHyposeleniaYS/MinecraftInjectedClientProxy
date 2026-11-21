@@ -20,9 +20,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Version shown in the UI ("关于" page / sidebar). Release builds override it
-# with the git tag version via -DMICP_APP_VERSION=x.y.z; defaults to the
-# project() version above.
+# Version shown in the UI ("关于" page / sidebar footer). Release builds
+# override it with the git tag version via -DMICP_APP_VERSION=x.y.z.
 if(NOT MICP_APP_VERSION)
     set(MICP_APP_VERSION "${PROJECT_VERSION}")
 endif()
@@ -32,116 +31,49 @@ if(MSVC)
     add_compile_options(/utf-8 /W3 /permissive-)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets)
-qt_standard_project_setup()
-
-set(MICP_SOURCES
+add_executable(micp WIN32
     src/main.cpp
-
-    # --- application shell -------------------------------------------------
-    src/app/Theme.h
+    src/app/App.cpp
+    src/app/Paint.cpp
     src/app/Theme.cpp
-    src/app/Icons.h
-    src/app/Icons.cpp
-    src/app/Buttons.h
-    src/app/Buttons.cpp
-    src/app/LineEdit.h
-    src/app/LineEdit.cpp
-    src/app/ToggleSwitch.h
-    src/app/ToggleSwitch.cpp
-    src/app/SegmentedControl.h
-    src/app/SegmentedControl.cpp
-    src/app/Card.h
-    src/app/Card.cpp
-    src/app/EmptyState.h
-    src/app/EmptyState.cpp
-    src/app/Stepper.h
-    src/app/Stepper.cpp
-    src/app/Toast.h
-    src/app/Toast.cpp
-    src/app/TitleBar.h
-    src/app/TitleBar.cpp
-    src/app/Sidebar.h
-    src/app/Sidebar.cpp
-    src/app/Page.h
-    src/app/Page.cpp
-    src/app/Widgets.h
-    src/app/Widgets.cpp
-    src/app/ProgressBar.h
-    src/app/ProgressBar.cpp
-    src/app/MainWindow.h
-    src/app/MainWindow.cpp
-
-    # --- pages -------------------------------------------------------------
-    src/pages/OverviewPage.h
-    src/pages/OverviewPage.cpp
-    src/pages/InjectPage.h
-    src/pages/InjectPage.cpp
-    src/pages/LogsPage.h
-    src/pages/LogsPage.cpp
-    src/pages/SettingsPage.h
-    src/pages/SettingsPage.cpp
-    src/pages/AboutPage.h
-    src/pages/AboutPage.cpp
-
-    # --- core services -----------------------------------------------------
-    src/core/AppPaths.h
+    src/app/Ui.cpp
     src/core/AppPaths.cpp
-    src/core/Settings.h
-    src/core/Settings.cpp
-    src/core/ProcessFinder.h
-    src/core/ProcessFinder.cpp
-    src/core/PortProbe.h
-    src/core/PortProbe.cpp
-    src/core/Injector.h
-    src/core/Injector.cpp
-    src/core/InjectionSequence.h
     src/core/InjectionSequence.cpp
-    src/core/ProxyMonitor.h
-    src/core/ProxyMonitor.cpp
-    src/core/LogTail.h
+    src/core/Injector.cpp
     src/core/LogTail.cpp
-
-    # --- injected-proxy engine (portable C core) ---------------------------
-    src/core/injectcore/ReflectiveDLLInjection.h
-    src/core/injectcore/RuntimeControl.h
-    src/core/injectcore/GetProcAddressR.h
+    src/core/PortProbe.cpp
+    src/core/ProcessFinder.cpp
+    src/core/ProxyMonitor.cpp
+    src/core/Settings.cpp
     src/core/injectcore/GetProcAddressR.c
-    src/core/injectcore/LoadLibraryR.h
-    src/core/injectcore/LoadLibraryR.c
-    src/core/injectcore/Inject.h
     src/core/injectcore/Inject.c
-)
+    src/core/injectcore/LoadLibraryR.c
+    resources/appicon.rc)
 
-include(CheckLanguage)
-check_language(RC)
-if(CHECK_LANGUAGE_RC)
-    enable_language(RC)
-    list(APPEND MICP_SOURCES resources/appicon.rc)
-endif()
-
-qt_add_executable(MinecraftInjectedClientProxy WIN32 ${MICP_SOURCES})
-
-target_include_directories(MinecraftInjectedClientProxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-target_compile_definitions(MinecraftInjectedClientProxy PRIVATE
+target_include_directories(micp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_definitions(micp PRIVATE
     MICP_APP_VERSION="${MICP_APP_VERSION}"
-    UNICODE
-    _UNICODE
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-    _CRT_SECURE_NO_WARNINGS
-    WIN_X64)
+    UNICODE _UNICODE
+    # iphlpapi / winsock helpers
+    _WINSOCK_DEPRECATED_NO_WARNINGS)
 
-target_link_libraries(MinecraftInjectedClientProxy PRIVATE
-    Qt6::Widgets
-    dwmapi
-    user32
-    gdi32
-    advapi32
-    iphlpapi
-    ws2_32
-    shell32
-    ntdll)
+target_link_libraries(micp PRIVATE
+    user32 gdi32 gdiplus dwmapi shell32 comdlg32 advapi32
+    iphlpapi ws2_32 ole32)
 
-install(TARGETS MinecraftInjectedClientProxy RUNTIME DESTINATION .)
+set_target_properties(micp PROPERTIES
+    OUTPUT_NAME "MinecraftInjectedClientProxy"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+# Convenience target: run the freshly built exe.
+if(MSVC)
+    add_custom_target(run
+        COMMAND "${CMAKE_BINARY_DIR}/bin/Release/$<TARGET_FILE_NAME:micp>"
+        DEPENDS micp
+        COMMENT "Launching MinecraftInjectedClientProxy")
+else()
+    add_custom_target(run
+        COMMAND "${CMAKE_BINARY_DIR}/bin/$<TARGET_FILE_NAME:micp>"
+        DEPENDS micp
+        COMMENT "Launching MinecraftInjectedClientProxy")
+endif()

@@ -1,112 +1,67 @@
-# Minecraft Injected Client Proxy — GUI
+# Minecraft Injected Client Proxy
 
-[![CI](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml/badge.svg)](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy?label=release)](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases/latest)
+Minecraft 1.20.1 客户端反向代理的桌面管理工具（Aurora.dll 的注入器 / 控制台），**macOS 风格图形界面**。
 
-Minecraft Java **1.20.1** 注入式客户端反向代理的图形界面。A 客户端保持与远端服务器的真实连接；代理 DLL 注入到 A 进程后在本机开启 **25565** 监听，B 客户端连接该端口即可进入 A 所在的服务器，共享世界、物品栏与位置。
+**原生 Win32 + GDI+ 实现，无任何运行时依赖** —— 不需要 Qt、.NET 或 VC++ 运行库，构建产物为单个 exe（约数百 KB），冷启动即时。
 
-本程序将注入器完整移植进 GUI：等待目标窗口、反射式注入、恢复驻留代理、探测端口就绪，全部在 C++ 中完成，不依赖任何网页资源。
+## 它做什么
 
-## 下载
+- **A 客户端**：运行 Minecraft 1.20.1 并进入目标服务器（本工具把代理 DLL 注入到这个进程）
+- **B 客户端**：使用「直接连接」访问 `127.0.0.1:25565`，与 A 共享同一条会话
+- 本程序负责：定位目标窗口 → 注入 `Aurora.dll` → 探测代理端口就绪 → 实时查看代理日志
 
-- 在 [Releases](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases/latest) 页面获取 Windows x64 便携版压缩包（已内嵌 Qt 运行库，解压即用，附 SHA-256 校验和）。
-- 推送到 `main` 的每次构建产物也可从 [Actions](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml) 页面下载。
-
-## 界面
-
-借鉴 macOS 应用视觉语言的 Windows 原生（Qt 6）桌面程序：
-
-- 无边框窗口、自绘标题栏，左上角红黄绿圆点映射 **关闭 / 最小化 / 最大化**
-- 通过 DWM（`nativeEvent` + `DwmSetWindowAttribute`）应用圆角窗口与可选 **Mica / 亚克力** 背景（Windows 11 22H2+，设置中开启）
-- 220 px 毛玻璃侧边栏、12 px 圆角卡片、8 pt 网格、胶囊选中态、分段控件、开关
-- 浅色 `#F5F5F7` / 深色双主题，强调色 `#0A84FF`，Segoe UI Variable 字体链
-- 全部控件由 QPainter 自绘（含 1.5 px 线性图标），hover / focus / active / disabled / 空状态 / Toast 通知齐备
-- 高 DPI 缩放、原生 Aero Snap、右键标题栏弹出系统菜单
-
-## 功能页面
+## 功能总览
 
 | 页面 | 内容 |
 | --- | --- |
-| 总览 | 代理运行状态、A 客户端、监听端口、B 连接数实时卡片；快速上手与注意事项 |
-| 注入 | DLL 路径与窗口关键字配置、五步注入进度（等待窗口 → 匹配进程 → 注入 → 等端口 → 完成）、30 秒进度条、管理员权限横幅 |
-| 日志 | 自动探测并实时跟随 `proxy.log`，按严重级别过滤着色，跟随滚动/清空/打开目录 |
-| 设置 | 主题、窗口材质、注入默认值、日志来源覆盖、管理员重启、恢复默认 |
-| 关于 | 产品标识、运行要求、使用要点 |
+| 总览 | 代理运行状态、B 客户端连接数、一键注入、当前配置摘要、局域网连接提示 |
+| 注入 | DLL 路径 / 窗口关键字 / 端口，分步进度（检查 DLL → 定位窗口 → 注入 → 等待监听）与结果横幅 |
+| 日志 | 实时尾随 `proxy.log`（自动探测常见位置）、级别着色与过滤、自动滚动、跳转系统记事本 |
+| 设置 | 主题（跟随系统 / 浅色 / 深色）、窗口材质（云母 / 亚克力，实验性）、注入与日志行为、恢复默认 |
+| 关于 | 版本、仓库链接、以管理员身份重启 |
 
-## 构建要求
+界面语言为简体中文；默认窗口关键字「布吉岛」、默认端口 25565，均可在「注入」页修改。
 
-- Windows 10 / 11 x64
-- **Qt 6.5+**（Widgets 模块）
-- **Visual Studio 2022**（含 C++ 桌面开发与 CMake 组件）或 MSVC Build Tools
-- CMake 3.21+（VS 自带）
+## 界面与工程
 
-MSVC x64 是唯一受支持的工具链（注入核心为 64 位 PE 操作）。
+- macOS 风格：无边框自绘窗口、红黄绿窗口控制、毛玻璃侧边栏、胶囊选中态、分段控件、圆角卡片、Toast 浮窗
+- DWM 集成：Win11 圆角 + 沉浸式深色 + 系统材质（Mica / Acrylic，通过 32bpp ARGB 双缓冲与 `DwmExtendFrameIntoClientArea` 实现，Win10 自动回退）
+- Per-Monitor V2 高 DPI、跟随系统的深浅色切换（`WM_SETTINGCHANGE`）
+- 注入引擎移植自上游 Compass（反射式注入，`src/core/injectcore/`），支持驻留代理恢复信号
+- 端口探测基于 `GetExtendedTcpTable`（不建套接字），可判断"目标 PID 是否已监听端口"与 B 端连接数
 
-## 构建步骤
+## 从源码构建
 
-在 **x64 开发者命令行 / Developer PowerShell** 中执行：
+要求：Windows + Visual Studio 2022（或仅 Build Tools）+ CMake 3.21+，x64。
 
 ```powershell
-cmake -S . -B build -DCMAKE_PREFIX_PATH=<你的 Qt 安装路径>
+cmake -S . -B build
 cmake --build build --config Release --parallel
+# 产物：build\bin\Release\MinecraftInjectedClientProxy.exe
 ```
 
-产物为 `build\Release\MinecraftInjectedClientProxy.exe`（或 `build\` 下按生成器布局）。
+也可在 MinGW-w64 工具链下构建（CMake 会自动识别）。
 
-如需使用 Ninja：
+## 使用方法
 
-```powershell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<Qt 路径>
-cmake --build build --parallel
-```
+1. 取得 `Aurora.dll`（代理核心，**不随 Release 附带**，见下节）
+2. 将 DLL 与本程序放在同一目录（或在「注入」页手动选择文件）
+3. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
+4. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
+5. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
 
-## 使用说明
+注入成功后，程序会持续监视代理状态（进程存活 / 端口监听 / B 连接数）。
 
-1. 准备代理 DLL（`Aurora.dll`，由代理引擎构建产出），放在程序同目录即可自动探测，或在「注入」页手动选择。
-2. 启动 A 客户端并进入目标服务器（也可先跳过，采用“入服前注入”）。
-3. 在「注入」页点击 **开始注入**。程序会等待标题包含关键字（默认“布吉岛”，可在设置中修改）的 Java 窗口，完成反射注入并等待 25565 端口就绪。
-4. B 客户端使用「直接连接」输入 `127.0.0.1:25565`（同机）或 `A 的局域网 IP:25565`。
-5. A 窗口在前台时按 **DEL** 可随时停用代理；再次点击「开始注入」即可恢复（对驻留代理发送恢复事件，不会重复加载 DLL）。
+## 关于 Aurora.dll 的分发
 
-> 若游戏以管理员身份运行，请通过「注入」页或「设置 → 高级」以管理员身份重启本程序。
+本仓库只包含**图形界面与注入逻辑**；代理核心 `Aurora.dll` 的源码不在本仓库中，因此 Release 默认只附带 GUI。
 
-## 设置文件
+如果希望随包分发，把 `Aurora.dll` 提交到**仓库根目录**即可 —— CI 会检测到它并自动打进发布包（见 `.github/workflows/ci.yml` / `release.yml` 的打包步骤）。未检测到时发布说明会提示用户自行放置。
 
-所有偏好保存在 `%APPDATA%\MinecraftInjectedClientProxy\settings.ini`，可通过「设置 → 高级 → 打开设置目录」直达，支持一键恢复默认。
+## 持久化
 
-## 项目结构
-
-```
-CMakeLists.txt
-resources/            应用图标（由 scripts/gen_icon.py 生成）
-src/
-  main.cpp
-  app/                界面层：主题令牌、图标库、基础控件、标题栏、侧边栏、主窗口
-  pages/              总览 / 注入 / 日志 / 设置 / 关于
-  core/               服务层：设置、路径、进程定位、端口探测、注入序列、状态监视、日志跟随
-    injectcore/       注入核心（C）：反射加载、远程加载、驻留恢复信号
-```
-
-## 持续集成与发布
-
-仓库内置两套 GitHub Actions 工作流（`.github/workflows/`）：
-
-- **CI**（`ci.yml`）：推送到 `main` 或提交 PR 时，在 GitHub 托管的 Windows x64 环境中安装 Qt 6.8.3 LTS（MSVC 2022，带缓存）并完成 Release 构建、`windeployqt` 打包，产物可在工作流页面下载。
-- **Release**（`release.yml`）：推送 `v*` 标签即自动构建并在 [Releases](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases) 页发布便携版压缩包与校验和（含自动生成的中文更新日志；标签带 `-` 后缀时自动标记为预发布）：
-
-```powershell
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-  也可在 Actions 页面手动触发 Release 工作流并指定标签（标签不存在时会在当前提交上创建）。
-
-## 已知限制
-
-- 仅支持 Minecraft Java 1.20.1 与 Windows x64
-- 反射注入按 64 位 PE 解析，DLL 与目标进程架构必须一致
-- B 以离线身份加入，不进行 Mojang 正版验证
-- 更换磁盘上的 DLL 后需重启游戏，新版本才会被加载
+设置保存在 `%APPDATA%\MinecraftInjectedClientProxy\settings.ini`（INI，UTF-16，含窗口位置）。日志自动探测顺序：`%APPDATA%\.minecraft\proxy.log` → `%TEMP%\MinecraftProxy.log` → `C:\MinecraftProxy.log`。
 
 ## 免责声明
 
-仅供学习交流使用。请遵守所玩服务器的规则，合理使用本工具。
+仅供学习与技术研究用途。使用者需自行遵守 Minecraft EULA 及所玩服务器的规则；因滥用造成的后果与本项目无关。

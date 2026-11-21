@@ -1,44 +1,34 @@
 #pragma once
+// Tails the proxy log file (proxy.log). The UI polls this every 500 ms;
+// candidates are probed in order and the active source is switched
+// automatically when files appear/disappear.
 
-#include <QByteArray>
-#include <QFile>
-#include <QObject>
-#include <QString>
-#include <QStringList>
-#include <QTimer>
+#include "common.h"
 
-/*
- * Tails the proxy log. The active file is chosen from (in order) the
- * user override and the well-known candidate paths, mirroring the engine's
- * own fallback order. Lines are only emitted once they are complete
- * (newline-terminated); a partial trailing line is buffered until more data
- * arrives. If the file is truncated it is reloaded.
- */
-class LogTail : public QObject
+namespace micp {
+
+class LogTail
 {
-    Q_OBJECT
-
 public:
-    explicit LogTail(QObject* parent = nullptr);
+    struct Result
+    {
+        bool reset = false;            // the source changed / was reloaded
+        std::wstring source;           // empty when nothing is active
+        std::vector<std::wstring> lines;
+    };
 
-    void rescan(); // re-pick the active file and reload
-
-    QString activePath() const { return m_active; }
-    bool hasSource() const { return !m_active.isEmpty(); }
-
-signals:
-    void sourceChanged(const QString& path);
-    void linesAppended(const QStringList& lines);
-    void logReset(const QStringList& lines); // full (re)load, e.g. truncation
+    // overridePath: explicit user choice (may not exist yet); when empty the
+    // auto-detect candidates are probed.
+    Result Poll(const std::wstring& overridePath);
+    void Rescan(const std::wstring& overridePath);
 
 private:
-    void pickActive();
-    void pollSlot();
-    QStringList splitPending();
+    void PickActive(const std::wstring& overridePath);
 
-    QString m_active;
-    QFile m_file;
-    qint64 m_pos = 0;
-    QByteArray m_pending; // bytes of a not-yet-terminated line
-    QTimer m_timer;
+    HANDLE m_file = nullptr; // INVALID_HANDLE_VALUE when closed
+    std::wstring m_active;
+    unsigned long long m_pos = 0;
+    std::string m_pending;
 };
+
+} // namespace micp

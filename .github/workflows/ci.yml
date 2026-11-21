@@ -25,41 +25,21 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  QT_VERSION: '6.8.3' # LTS, satisfies the Qt 6.5+ requirement
-  QT_ARCH: win64_msvc2022_64
-  QT_HOME: 'C:\Qt' # shared between runs via the cache below
-
 jobs:
   windows:
-    name: Build (Windows x64, MSVC + Qt)
+    name: Build (Windows x64, MSVC, no dependencies)
     runs-on: windows-latest
     steps:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Cache Qt
-        id: qt
-        uses: actions/cache@v4
+      - name: Setup MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          path: ${{ env.QT_HOME }}
-          key: qt-${{ env.QT_VERSION }}-${{ env.QT_ARCH }}-v1
-
-      - name: Install Qt ${{ env.QT_VERSION }} (aqtinstall)
-        if: steps.qt.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade aqtinstall
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_ARCH -O $env:QT_HOME
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          arch: x64
 
       - name: Configure (CMake)
-        shell: pwsh
-        run: |
-          $qtDir = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64"
-          cmake -S . -B build "-DCMAKE_PREFIX_PATH=$qtDir"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+        run: cmake -S . -B build
 
       - name: Build (Release)
         run: cmake --build build --config Release --parallel
@@ -67,14 +47,18 @@ jobs:
       - name: Package portable bundle
         shell: pwsh
         run: |
-          $qtBin = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64\bin"
           $app = 'MinecraftInjectedClientProxy'
           $bundle = "package\$app"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
-          Copy-Item "build\Release\$app.exe" -Destination $bundle
+          Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
-          & "$qtBin\windeployqt.exe" --release --no-translations "$bundle\$app.exe"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # If the repository ships a prebuilt proxy DLL, bundle it too.
+          if (Test-Path "Aurora.dll" -PathType Leaf) {
+            Copy-Item "Aurora.dll" -Destination $bundle
+            Write-Host "Bundled Aurora.dll from the repository root."
+          } else {
+            Write-Host "No Aurora.dll in the repository root - release ships the GUI only."
+          }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path $bundle -DestinationPath "dist\$app-win64-r$($env:GITHUB_RUN_NUMBER).zip" -Force
           Get-ChildItem dist

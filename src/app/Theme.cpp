@@ -1,377 +1,297 @@
 #include "app/Theme.h"
 
-#include <QApplication>
-#include <QGuiApplication>
-#include <QStyleHints>
+#include <cstdarg>
+#include <cwctype>
+#include <cstring>
 
-#include <windows.h>
-#include <winternl.h>
+namespace micp {
+
+const wchar_t* kAppName = L"Minecraft Injected Client Proxy";
+const wchar_t* kRepoUrl = L"https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy";
+
+#ifndef MICP_APP_VERSION
+#define MICP_APP_VERSION "1.0.0"
+#endif
+
+const wchar_t* AppVersion()
+{
+    static std::wstring cached;
+    if (cached.empty())
+    {
+        const char* v = MICP_APP_VERSION;
+        cached.assign(v, v + strlen(v));
+    }
+    return cached.c_str();
+}
+
+// ---------------------------------------------------------------- utilities
+
+std::wstring FormatStr(const wchar_t* fmt, ...)
+{
+    wchar_t buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    vswprintf(buf, MICP_ARRLEN(buf), fmt, args);
+    va_end(args);
+    return buf;
+}
+
+bool HasCJK(const std::wstring& s)
+{
+    for (wchar_t c : s)
+    {
+        if (c >= 0x2E80 && c <= 0x9FFF)
+            return true;
+        if (c >= 0xF900 && c <= 0xFAFF)
+            return true;
+        if (c >= 0xFF00 && c <= 0xFFEF)
+            return true; // fullwidth forms
+    }
+    return false;
+}
+
+std::wstring TrimW(const std::wstring& s)
+{
+    size_t a = 0, b = s.size();
+    while (a < b && iswspace(s[a]))
+        ++a;
+    while (b > a && iswspace(s[b - 1]))
+        --b;
+    return s.substr(a, b - a);
+}
+
+bool FileExistsW(const std::wstring& path)
+{
+    if (path.empty())
+        return false;
+    const DWORD attr = GetFileAttributesW(path.c_str());
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// ------------------------------------------------------------------- theme
 
 namespace {
 
-// Windows 11 22H2 (build 22621) introduced DWMWA_SYSTEMBACKDROP_TYPE.
-bool systemBackdropSupported()
-{
-    typedef LONG(WINAPI * RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (!ntdll)
-        return false;
-    auto rtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(
-        reinterpret_cast<void*>(GetProcAddress(ntdll, "RtlGetVersion")));
-    if (!rtlGetVersion)
-        return false;
-    RTL_OSVERSIONINFOW info;
-    ZeroMemory(&info, sizeof(info));
-    info.dwOSVersionInfoSize = sizeof(info);
-    if (rtlGetVersion(&info) != 0)
-        return false;
-    return info.dwBuildNumber >= 22621;
-}
+bool g_systemDark = false;
+ThemeMode g_mode = ThemeMode::System;
+bool g_dark = false;
 
-QColor rgb(int r, int g, int b)
-{
-    return QColor(r, g, b);
-}
+const Pal kLight = {
+    Gdiplus::Color(0xFFF5F5F7),  // windowBg
+    Gdiplus::Color(0xFFEDEDF0),  // sidebarBg
+    Gdiplus::Color(0xFFFFFFFF),  // cardBg
+    Gdiplus::Color(0x1A000000),  // cardBorder
+    Gdiplus::Color(0xFFFFFFFF),  // fieldBg
+    Gdiplus::Color(0x2E3C3C43),  // fieldBorder
+    Gdiplus::Color(0x0D000000),  // hoverFill
+    Gdiplus::Color(0x14000000),  // separator
+    Gdiplus::Color(0xFF1D1D1F),  // text
+    Gdiplus::Color(0xFF6E6E73),  // text2
+    Gdiplus::Color(0xFFAEAEB2),  // text3
+    Gdiplus::Color(0xFF0A84FF),  // accent
+    Gdiplus::Color(0xFF3D9BFF),  // accentHover
+    Gdiplus::Color(0xFF0872D9),  // accentPress
+    Gdiplus::Color(0xFF34C759),  // success
+    Gdiplus::Color(0xFFFF9500),  // warning
+    Gdiplus::Color(0xFFFF3B30),  // danger
+    Gdiplus::Color(0xF0212125),  // toastBg
+    Gdiplus::Color(0xFFF5F5F7),  // toastText
+    Gdiplus::Color(0xFF6E6E73),  // lvInfo
+    Gdiplus::Color(0xFF9B51E0),  // lvDebug
+    Gdiplus::Color(0xFFCC7A00),  // lvWarn (readable on white)
+    Gdiplus::Color(0xFFD70015),  // lvError
+    Gdiplus::Color(0xFFAEAEB2),  // lvTime
+    Gdiplus::Color(0xFF1D1D1F),  // lvText
+    0.92f, 0.82f, 0.99f,         // mica alphas
+};
 
-QColor rgba(int r, int g, int b, int a)
+const Pal kDark = {
+    Gdiplus::Color(0xFF1B1B1F),  // windowBg
+    Gdiplus::Color(0xFF232327),  // sidebarBg
+    Gdiplus::Color(0xFF2A2A2E),  // cardBg
+    Gdiplus::Color(0x17FFFFFF),  // cardBorder
+    Gdiplus::Color(0xFF38383D),  // fieldBg
+    Gdiplus::Color(0x24FFFFFF),  // fieldBorder
+    Gdiplus::Color(0x0FFFFFFF),  // hoverFill
+    Gdiplus::Color(0x1AFFFFFF),  // separator
+    Gdiplus::Color(0xFFF5F5F7),  // text
+    Gdiplus::Color(0xFF98989F),  // text2
+    Gdiplus::Color(0xFF6E6E73),  // text3
+    Gdiplus::Color(0xFF0A84FF),  // accent
+    Gdiplus::Color(0xFF3D9BFF),  // accentHover
+    Gdiplus::Color(0xFF0872D9),  // accentPress
+    Gdiplus::Color(0xFF30D158),  // success
+    Gdiplus::Color(0xFFFF9F0A),  // warning
+    Gdiplus::Color(0xFFFF453A),  // danger
+    Gdiplus::Color(0xF2505055),  // toastBg
+    Gdiplus::Color(0xFFF5F5F7),  // toastText
+    Gdiplus::Color(0xFF98989F),  // lvInfo
+    Gdiplus::Color(0xFFBF5AF2),  // lvDebug
+    Gdiplus::Color(0xFFFF9F0A),  // lvWarn
+    Gdiplus::Color(0xFFFF6961),  // lvError
+    Gdiplus::Color(0xFF6E6E73),  // lvTime
+    Gdiplus::Color(0xFFEBEBF0),  // lvText
+    0.94f, 0.86f, 0.985f,        // mica alphas
+};
+
+void ReadSystemDark()
 {
-    return QColor(r, g, b, a);
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                      L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                      0, KEY_QUERY_VALUE, &key) == ERROR_SUCCESS)
+    {
+        DWORD value = 1, size = sizeof(value);
+        if (RegQueryValueExW(key, L"AppsUseLightTheme", nullptr, nullptr,
+                             reinterpret_cast<LPBYTE>(&value), &size) == ERROR_SUCCESS)
+            g_systemDark = (value == 0);
+        RegCloseKey(key);
+    }
 }
 
 } // namespace
 
-Theme::Theme()
-    : QObject(nullptr)
+void SetThemeMode(ThemeMode mode)
 {
-    m_pref = Pref::System;
-    m_backdrop = Backdrop::None;
-    recompute();
-
-    // Follow the OS light/dark scheme when the preference is "System".
-    connect(qGuiApp->styleHints(), &QStyleHints::colorSchemeChanged, this,
-            [this] {
-                if (m_pref == Pref::System)
-                    emitChanged();
-            });
+    g_mode = mode;
+    g_dark = (mode == ThemeMode::Dark) || (mode == ThemeMode::System && g_systemDark);
 }
 
-Theme* Theme::instance()
+ThemeMode ThemeModeNow() { return g_mode; }
+
+void RefreshSystemDark()
 {
-    static Theme t;
-    return &t;
+    ReadSystemDark();
+    SetThemeMode(g_mode);
 }
 
-void Theme::recompute()
+bool IsDark() { return g_dark; }
+
+const Pal& Palette() { return g_dark ? kDark : kLight; }
+
+// ------------------------------------------------------------------- fonts
+
+namespace {
+
+struct FontSlot
 {
-    m_pal = (currentMode() == Mode::Dark) ? buildDark() : buildLight();
-}
+    HFONT latin = nullptr;
+    HFONT cjk = nullptr;
+    Gdiplus::Font* gLatin = nullptr;
+    Gdiplus::Font* gCjk = nullptr;
+    int height = 0;
+};
 
-void Theme::emitChanged()
+struct FontSpec
 {
-    recompute();
-    emit changed();
-}
+    int px96;      // design pixel height at 96 dpi
+    int weight;    // GDI weight
+    bool mono;     // use the mono faces
+};
 
-Theme::Palette Theme::buildLight()
+const FontSpec kSpecs[FCount] = {
+    /* FTitle     */ {24, 600, false},
+    /* FHead      */ {15, 600, false},
+    /* FBody      */ {13, 400, false},
+    /* FBodySem   */ {13, 600, false},
+    /* FSmall     */ {12, 400, false},
+    /* FSmallSem  */ {12, 600, false},
+    /* FMono      */ {12, 400, true},
+    /* FMonoSmall */ {11, 400, true},
+};
+
+FontSlot g_slots[FCount];
+int g_dpi = 96;
+
+void DestroyFonts()
 {
-    Palette p;
-    p.dark = false;
-
-    p.windowBg = rgb(0xF5, 0xF5, 0xF7);
-    p.sidebarBg = rgb(0xEF, 0xEF, 0xF2);
-    p.card = rgb(0xFF, 0xFF, 0xFF);
-    p.border = rgba(0x1D, 0x1D, 0x1F, 26);
-
-    p.textPrimary = rgb(0x1D, 0x1D, 0x1F);
-    p.textSecondary = rgb(0x6E, 0x6E, 0x73);
-    p.textTertiary = rgb(0xAE, 0xAE, 0xB2);
-
-    p.accent = rgb(0x0A, 0x84, 0xFF);
-    p.accentHover = rgb(0x2E, 0x96, 0xFF);
-    p.accentPressed = rgb(0x07, 0x6E, 0xD1);
-    p.onAccent = rgb(0xFF, 0xFF, 0xFF);
-    p.accentSoft = rgba(0x0A, 0x84, 0xFF, 28);
-
-    p.controlBg = rgba(120, 120, 128, 31);
-    p.controlBgHover = rgba(120, 120, 128, 46);
-    p.controlBgActive = rgba(120, 120, 128, 60);
-
-    p.fieldBg = rgb(0xFF, 0xFF, 0xFF);
-    p.fieldBorder = rgba(0x1D, 0x1D, 0x1F, 40);
-    p.separator = rgba(0x1D, 0x1D, 0x1F, 24);
-
-    p.success = rgb(0x2E, 0xA0, 0x43);
-    p.warning = rgb(0xE0, 0x87, 0x00);
-    p.danger = rgb(0xE0, 0x36, 0x2C);
-    p.successSoft = rgba(52, 168, 83, 26);
-    p.warningSoft = rgba(224, 135, 0, 28);
-    p.dangerSoft = rgba(224, 54, 44, 26);
-
-    p.toastBg = rgba(0x1D, 0x1D, 0x1F, 224);
-    p.toastText = rgb(0xF5, 0xF5, 0xF7);
-    p.scrollbarThumb = rgba(0x1D, 0x1D, 0x1F, 56);
-
-    p.trafficRed = rgb(0xFF, 0x5F, 0x57);
-    p.trafficYellow = rgb(0xFE, 0xBC, 0x2E);
-    p.trafficGreen = rgb(0x28, 0xC8, 0x40);
-    p.trafficInactive = rgb(0xD2, 0xD2, 0xD6);
-
-    p.segmentedThumb = rgb(0xFF, 0xFF, 0xFF);
-    return p;
-}
-
-Theme::Palette Theme::buildDark()
-{
-    Palette p;
-    p.dark = true;
-
-    p.windowBg = rgb(0x1C, 0x1C, 0x1E);
-    p.sidebarBg = rgb(0x21, 0x21, 0x24);
-    p.card = rgb(0x2A, 0x2A, 0x2E);
-    p.border = rgba(255, 255, 255, 26);
-
-    p.textPrimary = rgb(0xF5, 0xF5, 0xF7);
-    p.textSecondary = rgb(0x98, 0x98, 0x9D);
-    p.textTertiary = rgb(0x63, 0x63, 0x66);
-
-    p.accent = rgb(0x0A, 0x84, 0xFF);
-    p.accentHover = rgb(0x36, 0x9D, 0xFF);
-    p.accentPressed = rgb(0x07, 0x6E, 0xD1);
-    p.onAccent = rgb(0xFF, 0xFF, 0xFF);
-    p.accentSoft = rgba(0x0A, 0x84, 0xFF, 56);
-
-    p.controlBg = rgba(120, 120, 128, 61);
-    p.controlBgHover = rgba(120, 120, 128, 79);
-    p.controlBgActive = rgba(120, 120, 128, 94);
-
-    p.fieldBg = rgb(0x1E, 0x1E, 0x20);
-    p.fieldBorder = rgba(255, 255, 255, 50);
-    p.separator = rgba(255, 255, 255, 24);
-
-    p.success = rgb(0x30, 0xD1, 0x58);
-    p.warning = rgb(0xFF, 0x9F, 0x0A);
-    p.danger = rgb(0xFF, 0x45, 0x3A);
-    p.successSoft = rgba(48, 209, 88, 40);
-    p.warningSoft = rgba(255, 159, 10, 42);
-    p.dangerSoft = rgba(255, 69, 58, 40);
-
-    p.toastBg = rgba(58, 58, 60, 235);
-    p.toastText = rgb(0xF5, 0xF5, 0xF7);
-    p.scrollbarThumb = rgba(255, 255, 255, 66);
-
-    p.trafficRed = rgb(0xFF, 0x5F, 0x57);
-    p.trafficYellow = rgb(0xFE, 0xBC, 0x2E);
-    p.trafficGreen = rgb(0x28, 0xC8, 0x40);
-    p.trafficInactive = rgb(0x48, 0x48, 0x4A);
-
-    p.segmentedThumb = rgb(0x5E, 0x5E, 0x63);
-    return p;
-}
-
-Theme::Mode Theme::systemMode()
-{
-    const Qt::ColorScheme scheme = qGuiApp->styleHints()->colorScheme();
-    return scheme == Qt::ColorScheme::Dark ? Mode::Dark : Mode::Light;
-}
-
-Theme::Mode Theme::currentMode()
-{
-    const Pref pref = instance()->m_pref;
-    if (pref == Pref::Light)
-        return Mode::Light;
-    if (pref == Pref::Dark)
-        return Mode::Dark;
-    return systemMode();
-}
-
-const Theme::Palette& Theme::pal()
-{
-    return instance()->m_pal;
-}
-
-Theme::Pref Theme::pref()
-{
-    return instance()->m_pref;
-}
-
-void Theme::setPref(Pref pref)
-{
-    Theme* self = instance();
-    if (self->m_pref == pref)
-        return;
-    self->m_pref = pref;
-    self->emitChanged();
-}
-
-Theme::Backdrop Theme::backdrop()
-{
-    return instance()->m_backdrop;
-}
-
-void Theme::setBackdrop(Backdrop backdrop)
-{
-    Theme* self = instance();
-    if (self->m_backdrop == backdrop)
-        return;
-    self->m_backdrop = backdrop;
-    // Repaint everything; the native window effects are re-applied by MainWindow.
-    emit self->changed();
-}
-
-bool Theme::backdropSupported()
-{
-    static const bool supported = systemBackdropSupported();
-    return supported;
-}
-
-bool Theme::translucentWindow()
-{
-    return backdrop() != Backdrop::None && backdropSupported();
-}
-
-QString Theme::fontFamily()
-{
-    return QStringLiteral("Segoe UI Variable Text, Segoe UI, Inter, Microsoft YaHei UI, Microsoft YaHei");
-}
-
-QString Theme::fontFamilyQss()
-{
-    return QStringLiteral("Segoe UI Variable Text");
-}
-
-QString Theme::monoFamily()
-{
-    return QStringLiteral("Cascadia Mono, Cascadia Code, Consolas");
-}
-
-QString Theme::monoFamilyQss()
-{
-    return QStringLiteral("Cascadia Mono");
-}
-
-QFont Theme::font(int pixelSize, int weight)
-{
-    QFont f;
-    f.setFamilies(QStringList() << QStringLiteral("Segoe UI Variable Text")
-                                << QStringLiteral("Segoe UI")
-                                << QStringLiteral("Inter")
-                                << QStringLiteral("Microsoft YaHei UI")
-                                << QStringLiteral("Microsoft YaHei"));
-    f.setPixelSize(pixelSize);
-    f.setWeight(QFont::Weight(weight));
-    return f;
-}
-
-QColor Theme::wash(const QColor& color, double opacity)
-{
-    QColor c = color;
-    c.setAlphaF(qBound(0.0, opacity, 1.0));
-    return c;
-}
-
-QPalette Theme::buildPalette()
-{
-    const Palette& p = pal();
-    QPalette palette;
-    palette.setColor(QPalette::Window, p.windowBg);
-    palette.setColor(QPalette::WindowText, p.textPrimary);
-    palette.setColor(QPalette::Base, p.card);
-    palette.setColor(QPalette::AlternateBase, p.windowBg);
-    palette.setColor(QPalette::Text, p.textPrimary);
-    palette.setColor(QPalette::PlaceholderText, p.textTertiary);
-    palette.setColor(QPalette::Button, p.windowBg);
-    palette.setColor(QPalette::ButtonText, p.textPrimary);
-    palette.setColor(QPalette::ToolTipBase, p.toastBg);
-    palette.setColor(QPalette::ToolTipText, p.toastText);
-    palette.setColor(QPalette::Highlight, p.accent);
-    palette.setColor(QPalette::HighlightedText, p.onAccent);
-    palette.setColor(QPalette::Disabled, QPalette::Text, p.textTertiary);
-    palette.setColor(QPalette::Disabled, QPalette::WindowText, p.textTertiary);
-    palette.setColor(QPalette::Link, p.accent);
-    return palette;
-}
-
-QString Theme::globalQss()
-{
-    const Palette& p = pal();
-    const auto colorStr = [](const QColor& c) {
-        return c.name(QColor::HexArgb);
-    };
-
-    return QStringLiteral(R"(
-        QScrollArea { background: transparent; border: none; }
-        QScrollArea > QWidget > QWidget { background: transparent; }
-
-        QScrollBar:vertical {
-            background: transparent;
-            width: 10px;
-            margin: 2px;
+    for (FontSlot& slot : g_slots)
+    {
+        delete slot.gLatin;
+        delete slot.gCjk;
+        slot.gLatin = slot.gCjk = nullptr;
+        if (slot.latin)
+        {
+            DeleteObject(slot.latin);
+            slot.latin = nullptr;
         }
-        QScrollBar::handle:vertical {
-            background: %1;
-            border-radius: 3px;
-            min-height: 28px;
-            margin: 2px;
+        if (slot.cjk)
+        {
+            DeleteObject(slot.cjk);
+            slot.cjk = nullptr;
         }
-        QScrollBar::handle:vertical:hover { background: %2; }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-
-        QScrollBar:horizontal {
-            background: transparent;
-            height: 10px;
-            margin: 2px;
-        }
-        QScrollBar::handle:horizontal {
-            background: %1;
-            border-radius: 3px;
-            min-width: 28px;
-            margin: 2px;
-        }
-        QScrollBar::handle:horizontal:hover { background: %2; }
-        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
-        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
-
-        QToolTip {
-            background: %3;
-            color: %4;
-            border: 1px solid %5;
-            border-radius: 6px;
-            padding: 5px 9px;
-            font-family: "%6";
-            font-size: 12px;
-        }
-
-        QLineEdit {
-            background: transparent;
-            border: none;
-            padding: 0;
-            selection-background-color: %8;
-            selection-color: %7;
-        }
-
-        QTextEdit {
-            background: transparent;
-            color: %7;
-            border: none;
-            selection-background-color: %8;
-            selection-color: %7;
-            font-family: "%9";
-            font-size: 12px;
-        }
-    )")
-        .arg(colorStr(p.scrollbarThumb),
-             colorStr(p.accent),
-             colorStr(p.dark ? QColor(0x3A, 0x3A, 0x3C) : QColor(0x6E, 0x6E, 0x73)),
-             colorStr(p.toastText),
-             colorStr(p.border),
-             fontFamilyQss(),
-             colorStr(p.textPrimary),
-             colorStr(p.dark ? QColor(0x0A, 0x84, 0xFF, 90) : QColor(0x0A, 0x84, 0xFF, 40)),
-             monoFamilyQss());
+    }
 }
 
-void Theme::applyApplicationFont()
+int MeasureFontHeight(HFONT font)
 {
-    QApplication::setFont(Theme::font(13, QFont::Normal));
+    HDC dc = GetDC(nullptr);
+    HGDIOBJ old = SelectObject(dc, font);
+    TEXTMETRICW tm = {};
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, old);
+    ReleaseDC(nullptr, dc);
+    return tm.tmHeight;
 }
+
+} // namespace
+
+void SetDpi(int dpi)
+{
+    if (dpi > 0)
+        g_dpi = dpi;
+}
+
+int Dpi() { return g_dpi; }
+
+void RebuildFonts(int dpi)
+{
+    SetDpi(dpi);
+    DestroyFonts();
+
+    const double scale = dpi / 96.0;
+    HDC screen = GetDC(nullptr);
+
+    for (int i = 0; i < FCount; ++i)
+    {
+        const FontSpec& spec = kSpecs[i];
+        const int px = int(spec.px96 * scale + 0.5);
+
+        const wchar_t* latin = spec.mono ? L"Consolas" : L"Segoe UI Variable Text";
+        const wchar_t* cjk = spec.mono ? L"Microsoft YaHei UI" : L"Microsoft YaHei UI";
+        const int cjkWeight = spec.mono ? 400 : spec.weight;
+
+        g_slots[i].latin = CreateFontW(-px, 0, 0, 0, spec.weight, FALSE, FALSE, FALSE,
+                                       DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                       CLEARTYPE_QUALITY, DEFAULT_PITCH, latin);
+        g_slots[i].cjk = CreateFontW(-px, 0, 0, 0, cjkWeight, FALSE, FALSE, FALSE,
+                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                     CLEARTYPE_QUALITY, DEFAULT_PITCH, cjk);
+        if (g_slots[i].latin)
+            g_slots[i].gLatin = new Gdiplus::Font(screen, g_slots[i].latin);
+        if (g_slots[i].cjk)
+            g_slots[i].gCjk = new Gdiplus::Font(screen, g_slots[i].cjk);
+        const int hLatin = MeasureFontHeight(g_slots[i].latin ? g_slots[i].latin : g_slots[i].cjk);
+        const int hCjk = MeasureFontHeight(g_slots[i].cjk);
+        g_slots[i].height = hLatin > hCjk ? hLatin : hCjk;
+    }
+
+    ReleaseDC(nullptr, screen);
+}
+
+Gdiplus::Font* GFont(FontId id, bool cjk)
+{
+    FontSlot& slot = g_slots[id];
+    Gdiplus::Font* f = cjk ? slot.gCjk : slot.gLatin;
+    return f ? f : slot.gLatin;
+}
+
+HFONT WFont(FontId id, bool cjk)
+{
+    FontSlot& slot = g_slots[id];
+    return (cjk && slot.cjk) ? slot.cjk : slot.latin;
+}
+
+int LineH(FontId id) { return g_slots[id].height; }
+
+} // namespace micp

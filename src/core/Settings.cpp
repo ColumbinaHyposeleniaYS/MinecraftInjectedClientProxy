@@ -2,157 +2,96 @@
 
 #include "core/AppPaths.h"
 
-#include <QSettings>
-
+namespace micp {
 namespace {
-constexpr const char* kKeyThemePref = "appearance/themePref";
-constexpr const char* kKeyBackdrop = "appearance/backdrop";
-constexpr const char* kKeyDllPath = "injection/dllPath";
-constexpr const char* kKeyKeyword = "injection/windowKeyword";
-constexpr const char* kKeyAutoSwitch = "injection/autoSwitchOnDone";
-constexpr const char* kKeyToastOnDone = "injection/toastOnDone";
-constexpr const char* kKeyLogOverride = "logs/pathOverride";
-constexpr const char* kKeyFollowLog = "logs/follow";
-constexpr const char* kKeyGeometry = "window/geometry";
+
+const wchar_t* kSectionUi = L"appearance";
+const wchar_t* kSectionInject = L"injection";
+const wchar_t* kSectionLog = L"logs";
+const wchar_t* kSectionWindow = L"window";
+
+std::wstring ReadString(const wchar_t* section, const wchar_t* key, const wchar_t* fallback)
+{
+    wchar_t buf[1024] = {};
+    GetPrivateProfileStringW(section, key, fallback ? fallback : L"", buf, MICP_ARRLEN(buf),
+                             AppPaths::SettingsIni().c_str());
+    return buf;
+}
+
+int ReadInt(const wchar_t* section, const wchar_t* key, int fallback)
+{
+    return GetPrivateProfileIntW(section, key, fallback, AppPaths::SettingsIni().c_str());
+}
+
+void WriteString(const wchar_t* section, const wchar_t* key, const std::wstring& value)
+{
+    WritePrivateProfileStringW(section, key, value.c_str(), AppPaths::SettingsIni().c_str());
+}
+
+void WriteInt(const wchar_t* section, const wchar_t* key, int value)
+{
+    WriteString(section, key, std::to_wstring(value));
+}
+
 } // namespace
 
-Settings::Settings()
-    : QObject(nullptr), m_store(new QSettings(AppPaths::settingsIni(), QSettings::IniFormat, this))
+SettingsData SettingsStore::Load()
 {
+    SettingsData d;
+
+    d.theme = static_cast<ThemeMode>(ReadInt(kSectionUi, L"themePref", 0));
+    if (d.theme != ThemeMode::System && d.theme != ThemeMode::Light && d.theme != ThemeMode::Dark)
+        d.theme = ThemeMode::System;
+
+    const int backdrop = ReadInt(kSectionUi, L"backdrop", 0);
+    d.backdrop = backdrop == 1 ? Backdrop::Mica
+               : backdrop == 2 ? Backdrop::Acrylic
+                               : Backdrop::None;
+
+    d.dllPath = ReadString(kSectionInject, L"dllPath", L"");
+
+    d.keyword = ReadString(kSectionInject, L"windowKeyword", L"");
+    if (TrimW(d.keyword).empty())
+        d.keyword = AppPaths::DefaultKeyword();
+
+    d.port = ReadInt(kSectionInject, L"port", AppPaths::DefaultPort());
+    if (d.port < 1 || d.port > 65535)
+        d.port = AppPaths::DefaultPort();
+
+    d.autoSwitchOnDone = ReadInt(kSectionInject, L"autoSwitchOnDone", 1) != 0;
+    d.toastOnDone = ReadInt(kSectionInject, L"toastOnDone", 1) != 0;
+
+    d.logPathOverride = ReadString(kSectionLog, L"pathOverride", L"");
+    d.followLog = ReadInt(kSectionLog, L"follow", 1) != 0;
+
+    d.winX = ReadInt(kSectionWindow, L"x", 0);
+    d.winY = ReadInt(kSectionWindow, L"y", 0);
+    d.winW = ReadInt(kSectionWindow, L"w", 0);
+    d.winH = ReadInt(kSectionWindow, L"h", 0);
+    d.maximized = ReadInt(kSectionWindow, L"maximized", 0) != 0;
+    d.hasPlacement = (d.winW >= 400 && d.winH >= 300);
+
+    return d;
 }
 
-Settings* Settings::instance()
+void SettingsStore::Save(const SettingsData& d)
 {
-    static Settings s;
-    return &s;
+    WriteInt(kSectionUi, L"themePref", static_cast<int>(d.theme));
+    WriteInt(kSectionUi, L"backdrop", d.backdrop == Backdrop::Mica ? 1
+                                  : d.backdrop == Backdrop::Acrylic ? 2 : 0);
+    WriteString(kSectionInject, L"dllPath", d.dllPath);
+    WriteString(kSectionInject, L"windowKeyword", d.keyword);
+    WriteInt(kSectionInject, L"port", d.port);
+    WriteInt(kSectionInject, L"autoSwitchOnDone", d.autoSwitchOnDone ? 1 : 0);
+    WriteInt(kSectionInject, L"toastOnDone", d.toastOnDone ? 1 : 0);
+    WriteString(kSectionLog, L"pathOverride", d.logPathOverride);
+    WriteInt(kSectionLog, L"follow", d.followLog ? 1 : 0);
+
+    WriteInt(kSectionWindow, L"x", d.winX);
+    WriteInt(kSectionWindow, L"y", d.winY);
+    WriteInt(kSectionWindow, L"w", d.winW);
+    WriteInt(kSectionWindow, L"h", d.winH);
+    WriteInt(kSectionWindow, L"maximized", d.maximized ? 1 : 0);
 }
 
-Settings::ThemePref Settings::themePref() const
-{
-    const int v = m_store->value(kKeyThemePref, 0).toInt();
-    if (v == 1)
-        return ThemePref::Light;
-    if (v == 2)
-        return ThemePref::Dark;
-    return ThemePref::System;
-}
-
-void Settings::setThemePref(ThemePref pref)
-{
-    m_store->setValue(kKeyThemePref, int(pref));
-    m_store->sync();
-    emit themePrefChanged();
-}
-
-Settings::Backdrop Settings::backdrop() const
-{
-    const int v = m_store->value(kKeyBackdrop, 0).toInt();
-    if (v == 1)
-        return Backdrop::Mica;
-    if (v == 2)
-        return Backdrop::Acrylic;
-    return Backdrop::None;
-}
-
-void Settings::setBackdrop(Backdrop backdrop)
-{
-    m_store->setValue(kKeyBackdrop, int(backdrop));
-    m_store->sync();
-    emit backdropChanged();
-}
-
-QString Settings::dllPath() const
-{
-    return m_store->value(kKeyDllPath).toString();
-}
-
-void Settings::setDllPath(const QString& path)
-{
-    m_store->setValue(kKeyDllPath, path);
-    m_store->sync();
-    emit injectionSettingsChanged();
-}
-
-QString Settings::windowKeyword() const
-{
-    const QString v = m_store->value(kKeyKeyword).toString();
-    return v.isEmpty() ? AppPaths::defaultKeyword() : v;
-}
-
-void Settings::setWindowKeyword(const QString& keyword)
-{
-    m_store->setValue(kKeyKeyword, keyword);
-    m_store->sync();
-    emit injectionSettingsChanged();
-}
-
-bool Settings::autoSwitchOnDone() const
-{
-    return m_store->value(kKeyAutoSwitch, true).toBool();
-}
-
-void Settings::setAutoSwitchOnDone(bool on)
-{
-    m_store->setValue(kKeyAutoSwitch, on);
-    m_store->sync();
-}
-
-bool Settings::toastOnDone() const
-{
-    return m_store->value(kKeyToastOnDone, true).toBool();
-}
-
-void Settings::setToastOnDone(bool on)
-{
-    m_store->setValue(kKeyToastOnDone, on);
-    m_store->sync();
-}
-
-QString Settings::logPathOverride() const
-{
-    return m_store->value(kKeyLogOverride).toString();
-}
-
-void Settings::setLogPathOverride(const QString& path)
-{
-    m_store->setValue(kKeyLogOverride, path);
-    m_store->sync();
-    emit logSettingsChanged();
-}
-
-bool Settings::followLog() const
-{
-    return m_store->value(kKeyFollowLog, true).toBool();
-}
-
-void Settings::setFollowLog(bool on)
-{
-    m_store->setValue(kKeyFollowLog, on);
-    m_store->sync();
-    emit logSettingsChanged();
-}
-
-QByteArray Settings::windowGeometry() const
-{
-    return m_store->value(kKeyGeometry).toByteArray();
-}
-
-void Settings::saveWindowGeometry(const QByteArray& geometry)
-{
-    m_store->setValue(kKeyGeometry, geometry);
-    m_store->sync();
-}
-
-void Settings::resetAll()
-{
-    const QByteArray geometry = windowGeometry();
-    m_store->clear();
-    m_store->sync();
-    m_store->setValue(kKeyGeometry, geometry); // keep the window placement
-    m_store->sync();
-
-    emit themePrefChanged();
-    emit backdropChanged();
-    emit injectionSettingsChanged();
-    emit logSettingsChanged();
-}
+} // namespace micp

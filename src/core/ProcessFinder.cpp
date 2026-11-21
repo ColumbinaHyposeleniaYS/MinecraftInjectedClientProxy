@@ -2,15 +2,16 @@
 
 #include <tlhelp32.h>
 
+namespace micp {
 namespace {
 
 struct EnumContext
 {
     std::wstring keyword;
-    QList<ProxyTarget> found;
+    std::vector<ProxyTarget> found;
 };
 
-bool processEntryForPid(DWORD pid, PROCESSENTRY32W* outEntry)
+bool ProcessEntryForPid(DWORD pid, PROCESSENTRY32W* outEntry)
 {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE)
@@ -37,14 +38,14 @@ bool processEntryForPid(DWORD pid, PROCESSENTRY32W* outEntry)
     return found;
 }
 
-BOOL CALLBACK collectWindowsProc(HWND hwnd, LPARAM param)
+BOOL CALLBACK CollectWindowsProc(HWND hwnd, LPARAM param)
 {
     auto* ctx = reinterpret_cast<EnumContext*>(param);
     if (!IsWindowVisible(hwnd))
         return TRUE;
 
     wchar_t title[512];
-    const int len = GetWindowTextW(hwnd, title, int(sizeof(title) / sizeof(title[0])));
+    const int len = GetWindowTextW(hwnd, title, int(MICP_ARRLEN(title)));
     if (len <= 0)
         return TRUE;
     if (wcsstr(title, ctx->keyword.c_str()) == nullptr)
@@ -55,62 +56,69 @@ BOOL CALLBACK collectWindowsProc(HWND hwnd, LPARAM param)
     if (!pid)
         return TRUE;
 
-    QString processName;
-    if (!ProcessFinder::isJavaProcess(pid, &processName))
+    std::wstring processName;
+    if (!ProcessFinder::IsJavaProcess(pid, &processName))
         return TRUE;
 
     ProxyTarget target;
     target.pid = pid;
-    target.windowTitle = QString::fromWCharArray(title, len);
+    target.windowTitle.assign(title, size_t(len));
     target.processName = processName;
-    ctx->found.append(target);
+    ctx->found.push_back(std::move(target));
     return TRUE;
 }
 
 } // namespace
 
-bool ProcessFinder::isJavaProcess(DWORD pid, QString* processName)
+bool ProcessFinder::IsJavaProcess(DWORD pid, std::wstring* processName)
 {
     PROCESSENTRY32W entry;
     ZeroMemory(&entry, sizeof(entry));
     entry.dwSize = sizeof(entry);
-    if (!processEntryForPid(pid, &entry))
+    if (!ProcessEntryForPid(pid, &entry))
         return false;
 
-    const QString name = QString::fromWCharArray(entry.szExeFile).toLower();
-    const bool java = (name == QStringLiteral("java.exe") || name == QStringLiteral("javaw.exe"));
+    std::wstring name = entry.szExeFile;
+    for (auto& c : name)
+        c = towlower(c);
+    const bool java = (name == L"java.exe" || name == L"javaw.exe");
     if (java && processName)
         *processName = name;
     return java;
 }
 
-QList<ProxyTarget> ProcessFinder::findWindows(const QString& keyword)
+std::vector<ProxyTarget> ProcessFinder::FindWindows(const std::wstring& keyword)
 {
     EnumContext ctx;
-    ctx.keyword = keyword.toStdWString();
+    ctx.keyword = keyword;
     if (ctx.keyword.empty())
         return {};
 
-    EnumWindows(collectWindowsProc, reinterpret_cast<LPARAM>(&ctx));
-    return ctx.found;
+    EnumWindows(CollectWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+    return std::move(ctx.found);
 }
 
-ProxyTarget ProcessFinder::newestMatch(const QString& keyword)
+ProxyTarget ProcessFinder::NewestMatch(const std::wstring& keyword)
 {
-    const QList<ProxyTarget> all = findWindows(keyword);
-    if (all.isEmpty())
+    std::vector<ProxyTarget> all = FindWindows(keyword);
+    if (all.empty())
         return {};
 
     // De-duplicate by pid, then pick the target whose process started last.
-    QList<DWORD> seenPids;
+    std::vector<DWORD> seenPids;
     ProxyTarget best;
-    ULONGLONG bestCreated = 0;
+    unsigned long long bestCreated = 0;
     for (const ProxyTarget& t : all)
     {
-        if (seenPids.contains(t.pid))
+        bool seen = false;
+        for (DWORD pid : seenPids)
+            if (pid == t.pid)
+                seen = true;
+        if (seen)
             continue;
-        seenPids.append(t.pid);
-        const ULONGLONG created = creationTime(t.pid);
+        seenPids.push_back(t.pid);
+
+        const unsigned long long created = CreationTime(t.pid);
         if (!best.pid || created > bestCreated)
         {
             best = t;
@@ -120,7 +128,7 @@ ProxyTarget ProcessFinder::newestMatch(const QString& keyword)
     return best;
 }
 
-bool ProcessFinder::isProcessAlive(DWORD pid)
+bool ProcessFinder::IsProcessAlive(DWORD pid)
 {
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!process)
@@ -134,14 +142,14 @@ bool ProcessFinder::isProcessAlive(DWORD pid)
     return ok && code == STILL_ACTIVE;
 }
 
-ULONGLONG ProcessFinder::creationTime(DWORD pid)
+unsigned long long ProcessFinder::CreationTime(DWORD pid)
 {
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!process)
         return 0;
 
     FILETIME created, exited, kernel, user;
-    ULONGLONG value = 0;
+    unsigned long long value = 0;
     if (GetProcessTimes(process, &created, &exited, &kernel, &user))
     {
         ULARGE_INTEGER time;
@@ -152,3 +160,5 @@ ULONGLONG ProcessFinder::creationTime(DWORD pid)
     CloseHandle(process);
     return value;
 }
+
+} // namespace micp

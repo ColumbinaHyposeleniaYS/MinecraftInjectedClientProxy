@@ -1,30 +1,26 @@
 #pragma once
+// Well-known locations: settings directory, proxy log file candidates
+// (probed in order), default DLL lookup paths and the LAN addresses B
+// clients can connect to.
 
-#include <QString>
-#include <QStringList>
+#include "common.h"
 
-/*
- * Well-known locations used by the application: settings directory, proxy log
- * file candidates (probed in order), default DLL lookup paths and the LAN
- * addresses B clients can connect to.
- */
-class AppPaths
-{
-public:
-    static QString appDir();              // directory of the running .exe
-    static QString settingsDir();         // %APPDATA%\MinecraftInjectedClientProxy
-    static QString settingsIni();         // settings.ini inside settingsDir()
+namespace micp::AppPaths {
 
-    // Proxy log candidates, most preferred first (matches engine fallback order).
-    static QStringList logCandidates();
+std::wstring AppDir();          // directory of the running .exe
+std::wstring SettingsDir();     // %APPDATA%\MinecraftInjectedClientProxy
+std::wstring SettingsIni();     // settings.ini inside SettingsDir()
 
-    // Where we look for the proxy DLL (Aurora.dll) if the user never chose one.
-    static QStringList defaultDllCandidates();
+// Proxy log candidates, most preferred first (matches engine fallback order).
+std::vector<std::wstring> LogCandidates();
 
-    // Non-loopback IPv4 addresses of this machine, for the "B 如何连接" hint.
-    static QStringList lanIpAddresses();
+// Where we look for the proxy DLL (Aurora.dll) if the user never chose one.
+std::vector<std::wstring> DefaultDllCandidates();
 
-    static constexpr quint16 defaultPort() { return 25565; }
+// Non-loopback IPv4 addresses of this machine, for the "B 如何连接" hint.
+std::vector<std::wstring> LanIpAddresses();
 
-    static QString defaultKeyword();      // 布吉岛
-};
+constexpr uint16_t DefaultPort() { return 25565; }
+std::wstring DefaultKeyword(); // 布吉岛
+
+} // namespace micp::AppPaths

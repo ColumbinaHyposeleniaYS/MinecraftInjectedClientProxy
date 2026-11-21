@@ -1,155 +1,185 @@
 #include "core/LogTail.h"
 
 #include "core/AppPaths.h"
-#include "core/Settings.h"
 
-#include <QFileInfo>
+#include <cwchar>
 
+namespace micp {
 namespace {
-constexpr int kPollMs = 500;
-constexpr qint64 kInitialTailBytes = 64 * 1024; // only the last 64 KB on load
-} // namespace
 
-LogTail::LogTail(QObject* parent)
-    : QObject(parent)
+constexpr unsigned long long kInitialTailBytes = 64 * 1024; // last 64 KB on load
+
+bool ReadChunk(HANDLE file, unsigned long long pos, std::string& out)
 {
-    m_timer.setInterval(kPollMs);
-    connect(&m_timer, &QTimer::timeout, this, &LogTail::pollSlot);
-    m_timer.start();
-    // The initial pick happens in rescan(), called by MainWindow once the
-    // receivers are connected; the poll timer picks it up otherwise.
+    out.clear();
+    LARGE_INTEGER seek;
+    seek.QuadPart = LONGLONG(pos);
+    if (!SetFilePointerEx(file, seek, nullptr, FILE_BEGIN))
+        return false;
+
+    char buffer[8192];
+    for (;;)
+    {
+        DWORD got = 0;
+        if (!ReadFile(file, buffer, sizeof(buffer), &got, nullptr) || got == 0)
+            break;
+        out.append(buffer, got);
+        if (out.size() > 1024 * 1024)
+            break; // safety valve (1 MB per poll is already absurd)
+    }
+    return !out.empty();
 }
 
-void LogTail::pollSlot()
+unsigned long long FileSizeOf(const std::wstring& path)
 {
-    if (!m_file.isOpen())
+    WIN32_FILE_ATTRIBUTE_DATA info;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info))
+        return 0;
+    ULARGE_INTEGER size;
+    size.HighPart = info.nFileSizeHigh;
+    size.LowPart = info.nFileSizeLow;
+    return size.QuadPart;
+}
+
+std::vector<std::wstring> SplitPending(std::string& pending)
+{
+    std::vector<std::wstring> lines;
+    size_t start = 0;
+    for (;;)
     {
-        pickActive(); // the log file may appear later
+        const size_t idx = pending.find('\n', start);
+        if (idx == std::string::npos)
+            break;
+        std::string raw = pending.substr(start, idx - start);
+        if (!raw.empty() && raw.back() == '\r')
+            raw.pop_back();
+        // The engine writes UTF-8.
+        const int wide = MultiByteToWideChar(CP_UTF8, 0, raw.c_str(), int(raw.size()), nullptr, 0);
+        std::wstring line;
+        if (wide > 0)
+        {
+            line.resize(size_t(wide));
+            MultiByteToWideChar(CP_UTF8, 0, raw.c_str(), int(raw.size()), &line[0], wide);
+        }
+        lines.push_back(std::move(line));
+        start = idx + 1;
+    }
+    pending.erase(0, start);
+    return lines;
+}
+
+} // namespace
+
+void LogTail::PickActive(const std::wstring& overridePath)
+{
+    if (m_file != nullptr && m_file != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(m_file);
+        m_file = nullptr;
+    }
+    m_pos = 0;
+    m_pending.clear();
+    m_active.clear();
+
+    std::vector<std::wstring> candidates;
+    if (!overridePath.empty())
+        candidates.push_back(overridePath);
+    const auto auto_ = AppPaths::LogCandidates();
+    candidates.insert(candidates.end(), auto_.begin(), auto_.end());
+
+    for (const auto& candidate : candidates)
+    {
+        if (!FileExistsW(candidate))
+            continue;
+        HANDLE file = CreateFileW(candidate.c_str(), GENERIC_READ,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            continue;
+
+        m_file = file;
+        m_active = candidate;
+
+        // Load the last 64 KB. Only drop the first (likely partial) line when
+        // we actually started mid-file; small files are read from the top.
+        const unsigned long long size = FileSizeOf(candidate);
+        m_pos = size > kInitialTailBytes ? size - kInitialTailBytes : 0;
+        const bool startedMidFile = (m_pos > 0);
+        std::string chunk;
+        if (ReadChunk(m_file, m_pos, chunk))
+        {
+            m_pos += chunk.size();
+            if (startedMidFile)
+            {
+                const size_t firstNewline = chunk.find('\n');
+                if (firstNewline == std::string::npos)
+                    chunk.clear();
+                else
+                    chunk.erase(0, firstNewline + 1);
+            }
+            m_pending = std::move(chunk);
+        }
         return;
     }
-    QFileInfo info(m_active);
-    if (!info.exists())
+}
+
+void LogTail::Rescan(const std::wstring& overridePath)
+{
+    m_active.clear(); // force re-pick even if the current file still exists
+    PickActive(overridePath);
+}
+
+LogTail::Result LogTail::Poll(const std::wstring& overridePath)
+{
+    Result result;
+
+    if (m_file == nullptr || m_file == INVALID_HANDLE_VALUE)
     {
-        m_file.close();
-        m_pos = 0;
-        m_pending.clear();
-        m_active.clear(); // avoid the guard below re-hitting on a closed file
-        pickActive();     // fall back to the next candidate
-        return;
+        PickActive(overridePath);
+        if (m_file != nullptr && m_file != INVALID_HANDLE_VALUE)
+        {
+            result.reset = true;
+            result.source = m_active;
+            result.lines = SplitPending(m_pending);
+        }
+        return result;
     }
 
-    const qint64 size = info.size();
+    if (!FileExistsW(m_active))
+    {
+        PickActive(overridePath);
+        result.reset = true;
+        result.source = m_active;
+        result.lines = SplitPending(m_pending);
+        return result;
+    }
+
+    const unsigned long long size = FileSizeOf(m_active);
     if (size < m_pos)
     {
         // Truncated: reload from the beginning.
         m_pos = 0;
         m_pending.clear();
-        if (m_file.seek(0))
+        std::string chunk;
+        if (ReadChunk(m_file, 0, chunk))
         {
-            m_pending = m_file.readAll();
-            m_pos = m_pending.size();
-            const QStringList lines = splitPending();
-            emit logReset(lines);
+            m_pos = chunk.size();
+            m_pending = std::move(chunk);
         }
-        return;
+        result.reset = true;
+        result.source = m_active;
+        result.lines = SplitPending(m_pending);
+        return result;
     }
-    if (m_file.seek(m_pos))
+
+    std::string chunk;
+    if (m_pos < size && ReadChunk(m_file, m_pos, chunk))
     {
-        const QByteArray chunk = m_file.readAll();
-        if (!chunk.isEmpty())
-        {
-            m_pos += chunk.size();
-            m_pending.append(chunk);
-            const QStringList lines = splitPending();
-            if (!lines.isEmpty())
-                emit linesAppended(lines);
-        }
+        m_pos += chunk.size();
+        m_pending.append(chunk);
+        result.lines = SplitPending(m_pending);
     }
+    return result;
 }
 
-void LogTail::rescan()
-{
-    m_file.close();
-    m_pos = 0;
-    m_pending.clear();
-    m_active.clear(); // force re-pick even if the current file still exists
-    pickActive();
-}
-
-void LogTail::pickActive()
-{
-    if (!m_active.isEmpty() && QFileInfo::exists(m_active))
-        return; // current source still alive
-
-    m_file.close();
-    m_pos = 0;
-    m_pending.clear();
-    m_active.clear();
-
-    const QString overridePath = Settings::instance()->logPathOverride();
-    QStringList candidates;
-    if (!overridePath.isEmpty())
-        candidates << overridePath;
-    candidates << AppPaths::logCandidates();
-
-    for (const QString& candidate : candidates)
-    {
-        if (!QFileInfo::exists(candidate))
-            continue;
-        if (!m_file.open(QIODevice::ReadOnly))
-            continue;
-
-        m_active = candidate;
-
-        // Load the last 64 KB. Only drop the first (likely partial) line when
-        // we actually started mid-file; small files are read from the top.
-        const qint64 size = m_file.size();
-        m_pos = qMax<qint64>(0, size - kInitialTailBytes);
-        const bool startedMidFile = (m_pos > 0);
-        QStringList lines;
-        if (m_file.seek(m_pos))
-        {
-            QByteArray chunk = m_file.readAll();
-            m_pos += chunk.size();
-            if (startedMidFile)
-            {
-                const int firstNewline = chunk.indexOf('\n');
-                if (firstNewline < 0)
-                    chunk.clear();
-                else
-                    chunk.remove(0, firstNewline + 1);
-            }
-            m_pending = chunk;
-            lines = splitPending();
-        }
-
-        emit sourceChanged(m_active);
-        emit logReset(lines);
-        return;
-    }
-
-    if (!m_active.isEmpty())
-    {
-        m_active.clear();
-        emit sourceChanged(QString());
-    }
-}
-
-QStringList LogTail::splitPending()
-{
-    QStringList lines;
-    int start = 0;
-    while (true)
-    {
-        const int idx = m_pending.indexOf('\n', start);
-        if (idx < 0)
-            break;
-        QByteArray raw = m_pending.mid(start, idx - start);
-        if (raw.endsWith('\r'))
-            raw.chop(1);
-        lines.append(QString::fromUtf8(raw));
-        start = idx + 1;
-    }
-    m_pending.remove(0, start);
-    return lines;
-}
+} // namespace micp

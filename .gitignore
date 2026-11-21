@@ -13,6 +13,7 @@ CMakeUserPresets.json
 # Compiled products
 *.exe
 *.dll
+!Aurora.dll
 *.lib
 *.obj
 *.pdb

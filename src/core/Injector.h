@@ -1,31 +1,23 @@
 #pragma once
+// Thin wrapper around the injectcore engine (DoInjectEx).
 
-#include <QString>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
+#include "common.h"
 
-/*
- * Thin C++ wrapper around the injectcore engine. Blocking; callers are
- * expected to run it off the UI thread (see InjectionSequence).
- */
+namespace micp {
+
 struct InjectionResult
 {
     bool ok = false;
-    bool resumed = false;  // resident proxy was signalled, nothing new loaded
-    bool injected = false; // a fresh DLL was actually loaded into the target
-    QString message;       // human readable (Chinese) summary
-    quint32 winError = 0;  // GetLastError of the failing engine step, if any
+    bool resumed = false;  // a resident proxy was signalled instead
+    bool injected = false; // a fresh DLL load happened
+    uint32_t winError = 0;
+    std::wstring message;
 };
 
 namespace Injector {
 
-// Validates that the DLL file exists and is readable.
-bool fileReadable(const QString& dllPath);
-
-// Runs the full injection/reactivation for one process. Blocking.
-InjectionResult run(DWORD pid, const QString& dllPath);
+bool FileReadable(const std::wstring& dllPath);
+InjectionResult Run(DWORD pid, const std::wstring& dllPath);
 
 } // namespace Injector
+} // namespace micp

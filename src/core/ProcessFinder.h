@@ -1,33 +1,33 @@
 #pragma once
+// Locates the target Minecraft client window/process by title keyword.
 
-#include <QList>
-#include <QString>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <winsock2.h>
-#include <windows.h>
+#include "common.h"
+#include <string>
+#include <vector>
 
-/*
- * Locates the game window to inject into: a visible top-level window whose
- * title contains the configured keyword and whose process is java/javaw.
- * All functions are stateless WinAPI calls and safe to use from any thread.
- */
+namespace micp {
+
 struct ProxyTarget
 {
     DWORD pid = 0;
-    QString windowTitle;
-    QString processName; // java.exe / javaw.exe
+    std::wstring windowTitle;
+    std::wstring processName;
 
-    bool isValid() const { return pid != 0; }
+    bool valid() const { return pid != 0; }
 };
 
 class ProcessFinder
 {
 public:
-    static bool isJavaProcess(DWORD pid, QString* processName = nullptr);
-    static QList<ProxyTarget> findWindows(const QString& keyword);
-    static ProxyTarget newestMatch(const QString& keyword); // newest process wins
-    static bool isProcessAlive(DWORD pid);
-    static ULONGLONG creationTime(DWORD pid); // 0 on failure
+    static bool IsJavaProcess(DWORD pid, std::wstring* processName = nullptr);
+
+    static std::vector<ProxyTarget> FindWindows(const std::wstring& keyword);
+
+    // De-duplicated by pid, newest process creation time wins.
+    static ProxyTarget NewestMatch(const std::wstring& keyword);
+
+    static bool IsProcessAlive(DWORD pid);
+    static unsigned long long CreationTime(DWORD pid);
 };
+
+} // namespace micp
