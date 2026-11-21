@@ -16,6 +16,16 @@
  * Metrics: 8 pt grid, card radius 12 px, control radius 8 px, sidebar 220 px,
  * title bar 48 px.
  */
+
+/*
+ * Version shown in the UI. CI release builds inject the git tag version via
+ * -DMICP_APP_VERSION=x.y.z (see CMakeLists.txt); "1.0.0" is the fallback for
+ * local builds.
+ */
+#ifndef MICP_APP_VERSION
+#define MICP_APP_VERSION "1.0.0"
+#endif
+
 class Theme : public QObject
 {
     Q_OBJECT
@@ -92,7 +102,7 @@ public:
     static constexpr int ControlRadius = 8;
     static constexpr int GridUnit = 8;
 
-    static constexpr const char* AppVersion = "1.0.0";
+    static constexpr const char* AppVersion = MICP_APP_VERSION;
     static constexpr const char* AppName = "Minecraft Injected Client Proxy";
     static constexpr const char* CompilerTag =
 #if defined(_MSC_VER)

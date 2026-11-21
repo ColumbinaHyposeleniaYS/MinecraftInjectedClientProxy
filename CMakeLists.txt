@@ -20,6 +20,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Version shown in the UI ("关于" page / sidebar). Release builds override it
+# with the git tag version via -DMICP_APP_VERSION=x.y.z; defaults to the
+# project() version above.
+if(NOT MICP_APP_VERSION)
+    set(MICP_APP_VERSION "${PROJECT_VERSION}")
+endif()
+
 # Chinese UI strings are embedded in UTF-8 sources.
 if(MSVC)
     add_compile_options(/utf-8 /W3 /permissive-)
@@ -118,6 +125,7 @@ qt_add_executable(MinecraftInjectedClientProxy WIN32 ${MICP_SOURCES})
 target_include_directories(MinecraftInjectedClientProxy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_definitions(MinecraftInjectedClientProxy PRIVATE
+    MICP_APP_VERSION="${MICP_APP_VERSION}"
     UNICODE
     _UNICODE
     WIN32_LEAN_AND_MEAN

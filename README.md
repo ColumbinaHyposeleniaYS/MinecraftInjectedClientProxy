@@ -1,8 +1,15 @@
 # Minecraft Injected Client Proxy — GUI
 
+[![CI](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml/badge.svg)](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy?label=release)](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases/latest)
+
 Minecraft Java **1.20.1** 注入式客户端反向代理的图形界面。A 客户端保持与远端服务器的真实连接；代理 DLL 注入到 A 进程后在本机开启 **25565** 监听，B 客户端连接该端口即可进入 A 所在的服务器，共享世界、物品栏与位置。
 
 本程序将注入器完整移植进 GUI：等待目标窗口、反射式注入、恢复驻留代理、探测端口就绪，全部在 C++ 中完成，不依赖任何网页资源。
+
+## 下载
+
+- 在 [Releases](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases/latest) 页面获取 Windows x64 便携版压缩包（已内嵌 Qt 运行库，解压即用，附 SHA-256 校验和）。
+- 推送到 `main` 的每次构建产物也可从 [Actions](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/actions/workflows/ci.yml) 页面下载。
 
 ## 界面
 
@@ -78,6 +85,20 @@ src/
   core/               服务层：设置、路径、进程定位、端口探测、注入序列、状态监视、日志跟随
     injectcore/       注入核心（C）：反射加载、远程加载、驻留恢复信号
 ```
+
+## 持续集成与发布
+
+仓库内置两套 GitHub Actions 工作流（`.github/workflows/`）：
+
+- **CI**（`ci.yml`）：推送到 `main` 或提交 PR 时，在 GitHub 托管的 Windows x64 环境中安装 Qt 6.8.3 LTS（MSVC 2022，带缓存）并完成 Release 构建、`windeployqt` 打包，产物可在工作流页面下载。
+- **Release**（`release.yml`）：推送 `v*` 标签即自动构建并在 [Releases](https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy/releases) 页发布便携版压缩包与校验和（含自动生成的中文更新日志；标签带 `-` 后缀时自动标记为预发布）：
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+  也可在 Actions 页面手动触发 Release 工作流并指定标签（标签不存在时会在当前提交上创建）。
 
 ## 已知限制
 

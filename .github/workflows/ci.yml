@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.clang-format'
+      - '.editorconfig'
+      - '.gitignore'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.clang-format'
+      - '.editorconfig'
+      - '.gitignore'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: '6.8.3' # LTS, satisfies the Qt 6.5+ requirement
+  QT_ARCH: win64_msvc2022_64
+  QT_HOME: 'C:\Qt' # shared between runs via the cache below
+
+jobs:
+  windows:
+    name: Build (Windows x64, MSVC + Qt)
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Cache Qt
+        id: qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.QT_HOME }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_ARCH }}-v1
+
+      - name: Install Qt ${{ env.QT_VERSION }} (aqtinstall)
+        if: steps.qt.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade aqtinstall
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_ARCH -O $env:QT_HOME
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Configure (CMake)
+        shell: pwsh
+        run: |
+          $qtDir = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64"
+          cmake -S . -B build "-DCMAKE_PREFIX_PATH=$qtDir"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Package portable bundle
+        shell: pwsh
+        run: |
+          $qtBin = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64\bin"
+          $app = 'MinecraftInjectedClientProxy'
+          $bundle = "package\$app"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item "build\Release\$app.exe" -Destination $bundle
+          Copy-Item README.md -Destination $bundle
+          & "$qtBin\windeployqt.exe" --release --no-translations "$bundle\$app.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path $bundle -DestinationPath "dist\$app-win64-r$($env:GITHUB_RUN_NUMBER).zip" -Force
+          Get-ChildItem dist
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MinecraftInjectedClientProxy-win64-r${{ github.run_number }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14

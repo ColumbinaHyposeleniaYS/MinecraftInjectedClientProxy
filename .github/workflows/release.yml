@@ -1,0 +1,175 @@
+name: Release
+
+# Automatic releases:
+#   - push a version tag:  git tag v1.0.0 && git push origin v1.0.0
+#   - or run manually from the Actions tab and provide a tag
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.0.1 (created at the current commit if missing)'
+        required: true
+        default: 'v1.0.0'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: '6.8.3' # LTS, satisfies the Qt 6.5+ requirement
+  QT_ARCH: win64_msvc2022_64
+  QT_HOME: 'C:\Qt' # shared between runs via the cache below
+
+jobs:
+  release:
+    name: Build & publish (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - name: Check out (full history for the changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          $t = '${{ github.event_name }}' -eq 'workflow_dispatch' ? '${{ inputs.tag }}' : '${{ github.ref_name }}'
+          $t = "$t".Trim()
+          if ($t -notmatch '^v?[0-9]+(\.[0-9]+){0,3}(-[0-9A-Za-z.-]+)?$') {
+            Write-Error "Invalid release tag '$t' (expected e.g. v1.0.0 or v1.0.0-beta.1)"
+            exit 1
+          }
+          if (-not $t.StartsWith('v')) { $t = "v$t" }
+          $isPre = ($t -match '-')
+          "tag=$t" >> $env:GITHUB_OUTPUT
+          "version=$($t.Substring(1))" >> $env:GITHUB_OUTPUT
+          "prerelease=$($isPre ? 'true' : 'false')" >> $env:GITHUB_OUTPUT
+
+      - name: Cache Qt
+        id: qt
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.QT_HOME }}
+          key: qt-${{ env.QT_VERSION }}-${{ env.QT_ARCH }}-v1
+
+      - name: Install Qt ${{ env.QT_VERSION }} (aqtinstall)
+        if: steps.qt.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade aqtinstall
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_ARCH -O $env:QT_HOME
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Configure (CMake)
+        shell: pwsh
+        run: |
+          $qtDir = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64"
+          cmake -S . -B build "-DCMAKE_PREFIX_PATH=$qtDir" "-DMICP_APP_VERSION=${{ steps.tag.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Package portable bundle
+        shell: pwsh
+        run: |
+          $qtBin = "$env:QT_HOME\$env:QT_VERSION\msvc2022_64\bin"
+          $app = 'MinecraftInjectedClientProxy'
+          $tag = '${{ steps.tag.outputs.tag }}'
+          $bundle = "package\$app"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item "build\Release\$app.exe" -Destination $bundle
+          Copy-Item README.md -Destination $bundle
+          & "$qtBin\windeployqt.exe" --release --no-translations "$bundle\$app.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zipName = "$app-$tag-win64.zip"
+          $zip = "dist\$zipName"
+          Compress-Archive -Path $bundle -DestinationPath $zip -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          "$hash  $zipName" | Out-File -FilePath dist\checksums.sha256 -Encoding ascii
+          Get-ChildItem dist
+          "zip=$zip" >> $env:GITHUB_ENV
+
+      - name: Compose release notes
+        shell: pwsh
+        run: |
+          # git emits UTF-8; make PowerShell decode it correctly (Chinese commit messages)
+          [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+          $tag = '${{ steps.tag.outputs.tag }}'
+          $sha = '${{ github.sha }}'.Substring(0, 8)
+          $prev = git describe --tags --abbrev=0 HEAD^ 2>$null
+          if ($LASTEXITCODE -ne 0 -or -not $prev) { $prev = $null }
+          if ($prev) {
+            Write-Host "Changelog range: $prev..HEAD"
+            $commits = git log "$prev..HEAD" --no-merges --pretty=format:'- %s (%h)'
+          } else {
+            $commits = git log -20 --no-merges --pretty=format:'- %s (%h)'
+          }
+          $changelog = (@($commits) | Select-Object -First 40) -join "`n"
+          if (-not $changelog) { $changelog = '- 初始发布' }
+          # NOTE: the here-string body below sits at the script's column 0 after
+          # YAML strips the common indentation - required by PowerShell syntax.
+          $template = @'
+          ## 下载
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（已内嵌 Qt 运行库） |
+          | `checksums.sha256` | SHA-256 校验和 |
+
+          ## 更新内容 __TAG__
+
+          __CHANGELOG__
+
+          ## 运行要求
+
+          - Windows 10 / 11（x64）
+          - Microsoft Visual C++ 运行库（x64）：绝大多数系统已内置；若启动时提示缺少 `VCRUNTIME140.dll`，请安装 [vc_redist.x64](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+          - 代理 DLL（`Aurora.dll`）不随包分发，请自行放置到本程序同目录（或在「注入」页手动选择）
+
+          ## 快速上手
+
+          1. 解压到任意目录，运行 `MinecraftInjectedClientProxy.exe`
+          2. 启动 A 客户端并进入目标服务器
+          3. 在「注入」页点击「开始注入」（默认匹配标题含「布吉岛」的 Java 窗口，可在设置中修改）
+          4. B 客户端使用「直接连接」访问 `127.0.0.1:25565`
+
+          完整说明见压缩包内的 `README.md`。仅供学习交流使用，请遵守所玩服务器的规则。
+
+          > 构建信息：`__TAG__` @ `__SHA__` · Qt __QT__ LTS / MSVC x64
+          '@
+          $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__QT__', $env:QT_VERSION).Replace('__CHANGELOG__', $changelog)
+          $notes | Out-File -FilePath release-notes.md -Encoding utf8
+          Get-Content release-notes.md
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ steps.tag.outputs.tag }}'
+          $zip = $env:zip
+          $sums = 'dist\checksums.sha256'
+          $title = "Minecraft Injected Client Proxy $tag"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; re-uploading assets."
+            gh release upload $tag $zip $sums --clobber
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            gh release edit $tag --title $title --notes-file release-notes.md
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          } else {
+            $ghArgs = @('release', 'create', $tag, $zip, $sums, '--title', $title, '--notes-file', 'release-notes.md')
+            if ('${{ steps.tag.outputs.prerelease }}' -eq 'true') { $ghArgs += '--prerelease' }
+            if (-not (git tag --list $tag)) { $ghArgs += @('--target', '${{ github.sha }}') }
+            gh @ghArgs
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
