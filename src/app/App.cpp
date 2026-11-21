@@ -7,6 +7,7 @@
 
 #include <commdlg.h>
 #include <cstdlib>
+#include <uxtheme.h> // MARGINS (used by DwmExtendFrameIntoClientArea)
 #include <shellapi.h>
 #include <windowsx.h>
 

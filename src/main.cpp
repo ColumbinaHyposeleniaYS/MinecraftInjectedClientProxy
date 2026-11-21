@@ -167,7 +167,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         const HWND ctrl = reinterpret_cast<HWND>(lParam);
         const HDC hdc = reinterpret_cast<HDC>(wParam);
         const Pal& pal = Palette();
-        SetBkColor(hdc, pal.cardBg);
+        SetBkColor(hdc, RGB(pal.cardBg.GetR(), pal.cardBg.GetG(), pal.cardBg.GetB()));
         SetTextColor(hdc, IsWindowEnabled(ctrl) ? RGB(pal.text.GetR(), pal.text.GetG(), pal.text.GetB())
                                                 : RGB(pal.text3.GetR(), pal.text3.GetG(), pal.text3.GetB()));
         return reinterpret_cast<LRESULT>(g_app.m_editBrush);
@@ -256,7 +256,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
         DispatchMessageW(&msg);
     }
 
-    GdiplusShutdown(g_gdipToken);
+    Gdiplus::GdiplusShutdown(g_gdipToken);
     WSACleanup();
     CoUninitialize();
     return int(msg.wParam);

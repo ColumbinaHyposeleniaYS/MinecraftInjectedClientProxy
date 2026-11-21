@@ -1,6 +1,7 @@
 #include "app/Ui.h"
 
 #include <cmath>
+#include <initializer_list>
 
 namespace micp {
 namespace ui {
@@ -151,7 +152,7 @@ struct Pt
     float x, y;
 };
 
-void PathPolyline(Gdiplus::Graphics& g, const Pt* pts, int count, Gdiplus::Pen& pen, bool close)
+void PathPolyPts(Gdiplus::Graphics& g, const Pt* pts, int count, Gdiplus::Pen& pen, bool close)
 {
     Gdiplus::GraphicsPath path;
     Gdiplus::PointF first(pts[0].x, pts[0].y);
@@ -166,9 +167,14 @@ void PathPolyline(Gdiplus::Graphics& g, const Pt* pts, int count, Gdiplus::Pen& 
     g.DrawPath(&pen, &path);
 }
 
-void PathLines(Gdiplus::Graphics& g, const Pt* pts, int count, Gdiplus::Pen& pen)
+void PathLines(Gdiplus::Graphics& g, std::initializer_list<Pt> pts, Gdiplus::Pen& pen)
 {
-    PathPolyline(g, pts, count, pen, false);
+    PathPolyPts(g, pts.begin(), int(pts.size()), pen, false);
+}
+
+void PathPoly(Gdiplus::Graphics& g, std::initializer_list<Pt> pts, Gdiplus::Pen& pen)
+{
+    PathPolyPts(g, pts.begin(), int(pts.size()), pen, true);
 }
 
 } // namespace
@@ -198,7 +204,7 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     {
         Gdiplus::RectF arc(2.6f, 2.6f, 18.8f, 18.8f);
         g.DrawArc(&pen, arc, 135, 270);
-        PathLines(g, {{12, 13}, {16.8f, 8.2f}}, 2, pen);
+        PathLines(g, {{12, 13}, {16.8f, 8.2f}}, pen);
         Gdiplus::SolidBrush dot(c);
         g.FillEllipse(&dot, Gdiplus::RectF(10.9f, 11.9f, 2.2f, 2.2f));
         break;
@@ -207,14 +213,14 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     {
         const Pt bolt[] = {{13.2f, 2.6f}, {5.4f, 13.4f}, {10.8f, 13.4f}, {10.2f, 21.4f},
                            {18.6f, 10.2f}, {13.2f, 10.2f}};
-        PathPolyline(g, bolt, MICP_ARRLEN(bolt), pen, true);
+        PathPolyPts(g, bolt, MICP_ARRLEN(bolt), pen, true);
         break;
     }
     case IconKind::Doc:
     {
         RoundRect(g, RectF(5, 2.8f, 14, 18.4f), 2.2f, nullptr, &c, strokeW);
         for (float y = 8.2f; y <= 16.2f; y += 4)
-            PathLines(g, {{8.4f, y}, {15.6f, y}}, 2, pen);
+            PathLines(g, {{8.4f, y}, {15.6f, y}}, pen);
         break;
     }
     case IconKind::Gear:
@@ -228,7 +234,7 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
             const float s1 = 12 + float(9.8f * sin(a));
             const float c0 = 12 + float(6.8f * cos(a));
             const float s0 = 12 + float(6.8f * sin(a));
-            PathLines(g, {{c0, s0}, {c1, s1}}, 2, pen);
+            PathLines(g, {{c0, s0}, {c1, s1}}, pen);
         }
         break;
     }
@@ -238,28 +244,28 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
         g.DrawEllipse(&pen, ring);
         Gdiplus::SolidBrush dot(c);
         g.FillEllipse(&dot, Gdiplus::RectF(10.8f, 7.2f, 2.4f, 2.4f));
-        PathLines(g, {{12, 11.4f}, {12, 16.6f}}, 2, pen);
+        PathLines(g, {{12, 11.4f}, {12, 16.6f}}, pen);
         break;
     }
     case IconKind::Folder:
     {
         const Pt fold[] = {{3.4f, 5.6f}, {9.8f, 5.6f}, {12.2f, 8.2f}, {20.6f, 8.2f},
                            {20.6f, 18.6f}, {3.4f, 18.6f}};
-        PathPolyline(g, fold, MICP_ARRLEN(fold), pen, true);
+        PathPolyPts(g, fold, MICP_ARRLEN(fold), pen, true);
         break;
     }
     case IconKind::Check:
-        PathLines(g, {{5, 12.6f}, {9.8f, 17.2f}, {19, 6.8f}}, 3, pen);
+        PathLines(g, {{5, 12.6f}, {9.8f, 17.2f}, {19, 6.8f}}, pen);
         break;
     case IconKind::Close:
-        PathLines(g, {{6.4f, 6.4f}, {17.6f, 17.6f}}, 2, pen);
-        PathLines(g, {{17.6f, 6.4f}, {6.4f, 17.6f}}, 2, pen);
+        PathLines(g, {{6.4f, 6.4f}, {17.6f, 17.6f}}, pen);
+        PathLines(g, {{17.6f, 6.4f}, {6.4f, 17.6f}}, pen);
         break;
     case IconKind::Warn:
     {
         const Pt tri[] = {{12, 3.8f}, {22, 20.2f}, {2, 20.2f}};
-        PathPolyline(g, tri, MICP_ARRLEN(tri), pen, true);
-        PathLines(g, {{12, 9.4f}, {12, 13.4f}}, 2, pen);
+        PathPolyPts(g, tri, MICP_ARRLEN(tri), pen, true);
+        PathLines(g, {{12, 9.4f}, {12, 13.4f}}, pen);
         Gdiplus::SolidBrush dot(c);
         g.FillEllipse(&dot, Gdiplus::RectF(11, 16.2f, 2, 2));
         break;
@@ -267,8 +273,8 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     case IconKind::Link:
     {
         RoundRect(g, RectF(3.8f, 8.6f, 11.6f, 11.6f), 2.2f, nullptr, &c, strokeW);
-        PathLines(g, {{13.2f, 10.8f}, {20.4f, 3.6f}}, 2, pen);
-        PathLines(g, {{14.8f, 3.6f}, {20.4f, 3.6f}, {20.4f, 9.2f}}, 3, pen);
+        PathLines(g, {{13.2f, 10.8f}, {20.4f, 3.6f}}, pen);
+        PathLines(g, {{14.8f, 3.6f}, {20.4f, 3.6f}, {20.4f, 9.2f}}, pen);
         break;
     }
     case IconKind::Refresh:
@@ -279,41 +285,41 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
         const float ex = 12 + float(8.2f * cos(a));
         const float ey = 12 + float(8.2f * sin(a));
         const Pt head[] = {{ex + 2.6f, ey - 0.6f}, {ex - 0.4f, ey - 0.2f}, {ex + 0.6f, ey + 2.8f}};
-        PathPolyline(g, head, MICP_ARRLEN(head), pen, false);
+        PathPolyPts(g, head, MICP_ARRLEN(head), pen, false);
         break;
     }
     case IconKind::Search:
     {
         Gdiplus::RectF ring(4.2f, 4.2f, 11.2f, 11.2f);
         g.DrawEllipse(&pen, ring);
-        PathLines(g, {{13.8f, 13.8f}, {19.6f, 19.6f}}, 2, pen);
+        PathLines(g, {{13.8f, 13.8f}, {19.6f, 19.6f}}, pen);
         break;
     }
     case IconKind::Cube:
     {
         const Pt hex[] = {{12, 2.8f}, {20.2f, 7.4f}, {20.2f, 16.6f}, {12, 21.2f},
                           {3.8f, 16.6f}, {3.8f, 7.4f}};
-        PathPolyline(g, hex, MICP_ARRLEN(hex), pen, true);
-        PathLines(g, {{12, 12}, {20.2f, 7.4f}}, 2, pen);
-        PathLines(g, {{12, 12}, {3.8f, 7.4f}}, 2, pen);
-        PathLines(g, {{12, 12}, {12, 21.2f}}, 2, pen);
+        PathPolyPts(g, hex, MICP_ARRLEN(hex), pen, true);
+        PathLines(g, {{12, 12}, {20.2f, 7.4f}}, pen);
+        PathLines(g, {{12, 12}, {3.8f, 7.4f}}, pen);
+        PathLines(g, {{12, 12}, {12, 21.2f}}, pen);
         break;
     }
     case IconKind::Terminal:
     {
         RoundRect(g, RectF(3, 4.6f, 18, 14.8f), 2.2f, nullptr, &c, strokeW);
-        PathLines(g, {{6.8f, 9.4f}, {9.2f, 12}, {6.8f, 14.6f}}, 3, pen);
-        PathLines(g, {{11.8f, 14.6f}, {16.4f, 14.6f}}, 2, pen);
+        PathLines(g, {{6.8f, 9.4f}, {9.2f, 12}, {6.8f, 14.6f}}, pen);
+        PathLines(g, {{11.8f, 14.6f}, {16.4f, 14.6f}}, pen);
         break;
     }
     case IconKind::Plug:
     {
-        PathLines(g, {{9.4f, 5.6f}, {9.4f, 2.4f}}, 2, pen);
-        PathLines(g, {{14.6f, 5.6f}, {14.6f, 2.4f}}, 2, pen);
+        PathLines(g, {{9.4f, 5.6f}, {9.4f, 2.4f}}, pen);
+        PathLines(g, {{14.6f, 5.6f}, {14.6f, 2.4f}}, pen);
         RoundRect(g, RectF(7, 5.6f, 10, 8.2f), 2.0f, nullptr, &c, strokeW);
-        PathLines(g, {{12, 13.8f}, {12, 17.6f}}, 2, pen);
-        PathLines(g, {{8.4f, 17.6f}, {15.6f, 17.6f}}, 2, pen);
-        PathLines(g, {{8.4f, 21}, {15.6f, 21}}, 2, pen);
+        PathLines(g, {{12, 13.8f}, {12, 17.6f}}, pen);
+        PathLines(g, {{8.4f, 17.6f}, {15.6f, 17.6f}}, pen);
+        PathLines(g, {{8.4f, 21}, {15.6f, 21}}, pen);
         break;
     }
     }
@@ -325,7 +331,7 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
 
 namespace {
 
-Gdiplus::Color MixFill(float normal, float hover, float press, HoverState hs, bool dark)
+Gdiplus::Color MixFill(float normal, float hover, float press, HoverState hs)
 {
     float a = normal;
     if (hs == HoverState::Hover)
@@ -363,7 +369,8 @@ void Button(Gdiplus::Graphics& g, const RectF& r, const wchar_t* label, int styl
     }
     else // secondary / small
     {
-        fill = MixFill(dark ? 0.20f : 0.10f, dark ? 0.28f : 0.16f, dark ? 0.14f : 0.07f, hs, IsDark());
+        fill = MixFill(IsDark() ? 0.20f : 0.10f, IsDark() ? 0.28f : 0.16f,
+                       IsDark() ? 0.14f : 0.07f, hs);
         borderAlpha = 0.05f;
         textColor = danger ? pal.danger : pal.text;
     }
@@ -409,9 +416,10 @@ void Toggle(Gdiplus::Graphics& g, const RectF& r, bool on, HoverState hs)
     const float pad = r.h * 0.09f;
     const float thumbD = r.h - pad * 2;
     const float tx = on ? r.right() - thumbD - pad : r.x + pad;
-    Gdiplus::Color thumb(255, 255, 255);
+    const Gdiplus::Color thumb(255, 255, 255);
+    const Gdiplus::Color thumbBorder(28, 0, 0, 0);
     RoundRect(g, RectF(tx, r.y + pad, thumbD, thumbD), thumbD / 2, &thumb,
-              &Gdiplus::Color(28, 0, 0, 0), 1.0f);
+              &thumbBorder, 1.0f);
 }
 
 std::vector<RectF> SegmentedLayout(const RectF& r, size_t items)
@@ -450,8 +458,8 @@ void Segmented(Gdiplus::Graphics& g, const RectF& r, const std::vector<std::wstr
         }
         else if (int(i) == hoverItem)
         {
-            RoundRect(g, layout[i], layout[i].h / 2 - 1,
-                      &Gdiplus::Color(10, 0, 0, 0), nullptr, 0);
+            const Gdiplus::Color hoverFill(10, 0, 0, 0);
+            RoundRect(g, layout[i], layout[i].h / 2 - 1, &hoverFill, nullptr, 0);
         }
         const FontId font = r.h <= S(30) ? FSmall : FBodySem;
         Text(g, items[i], font, selected ? Palette().text : Palette().text2,

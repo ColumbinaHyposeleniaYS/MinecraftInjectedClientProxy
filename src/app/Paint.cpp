@@ -374,8 +374,9 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
             const bool ok = app.m_bannerKind == 1;
             const bool cancelled = app.m_bannerKind == 3;
             const Gdiplus::Color tint = ok ? p.success : cancelled ? p.text3 : p.danger;
-            ui::RoundRect(g, L.ijBanner, 8, &ApplyAlpha(tint, 0.12f),
-                          &ApplyAlpha(tint, 0.30f), 1.0f);
+            const Gdiplus::Color bannerFill = ApplyAlpha(tint, 0.12f);
+            const Gdiplus::Color bannerBorder = ApplyAlpha(tint, 0.30f);
+            ui::RoundRect(g, L.ijBanner, 8, &bannerFill, &bannerBorder, 1.0f);
             ui::Icon(g, ok ? IconKind::Check : cancelled ? IconKind::Close : IconKind::Warn,
                      RectF(L.ijBanner.x + float(S(14)), L.ijBanner.y + (L.ijBanner.h - float(S(18))) / 2,
                            float(S(18)), float(S(18))), tint, 1.7f);
@@ -605,20 +606,20 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
 
     const float fy = L.abFoot.y + float(S(6));
     ui::HLine(g, L.pageBox.x + float(S(60)), fy, L.pageBox.w - float(S(120)), pal.separator);
-    struct Line
+    struct AboutLine
     {
         const wchar_t* text;
-        bool small;
+        bool dim;
     };
-    const Line lines[] = {
+    const AboutLine lines[] = {
         { L"\u539f\u751f Win32 / GDI+ \u00b7 \u65e0\u4efb\u4f55\u8fd0\u884c\u65f6\u4f9d\u8d56 \u00b7 \u5355\u6587\u4ef6 exe", false }, // 原生 Win32 / GDI+ · 无任何运行时依赖 · 单文件 exe
         { L"\u4ee3\u7406\u6838\u5fc3 Aurora.dll \u7531\u4e0a\u6e38\u63d0\u4f9b\uff0c\u8bf7\u7f6e\u4e8e\u672c\u7a0b\u5e8f\u540c\u76ee\u5f55", false }, // 代理核心 Aurora.dll 由上游提供，请置于本程序同目录
         { L"\u4ec5\u4f9b\u5b66\u4e60\u4ea4\u6d41\u4f7f\u7528\uff0c\u8bf7\u9075\u5b88 Minecraft EULA \u4e0e\u76ee\u6807\u670d\u52a1\u5668\u89c4\u5219", true }, // 仅供学习交流使用，请遵守…
     };
     float ly = fy + float(S(16));
-    for (const Line& line : lines)
+    for (const AboutLine& line : lines)
     {
-        ui::Text(g, line.text, line.small ? FSmall : FSmall, line.small ? pal.text3 : pal.text2,
+        ui::Text(g, line.text, FSmall, line.dim ? pal.text3 : pal.text2,
                  RectF(L.pageBox.x, ly, L.pageBox.w, float(LineH(FSmall))), ui::Align::Center);
         ly += float(LineH(FSmall)) + float(S(6));
     }

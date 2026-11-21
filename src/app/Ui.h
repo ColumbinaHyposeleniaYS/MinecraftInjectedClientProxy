@@ -77,7 +77,7 @@ void NavItem(Gdiplus::Graphics& g, const RectF& r, IconKind icon, const wchar_t*
              bool selected, HoverState hs);
 
 // Injection step bullet: state 0 pending, 1 active (spinner), 2 done, 3 error.
-void StepBullet(Gdiplus::Graphics& g, const RectF& r, int state, int spinnerPhase);
+void StepBullet(Gdiplus::Graphics& g, const RectF& r, int state, int index, int spinnerPhase);
 
 // Small colored dot for status lines.
 void StatusDot(Gdiplus::Graphics& g, const RectF& r, const Gdiplus::Color& c);
