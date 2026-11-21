@@ -65,6 +65,12 @@ set_target_properties(micp PROPERTIES
     OUTPUT_NAME "MinecraftInjectedClientProxy"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
+if(MSVC)
+    # The manifest is embedded from resources/appicon.rc; disable the linker's
+    # auto-generated one (CVT1100: duplicate resource MANIFEST).
+    target_link_options(micp PRIVATE /MANIFEST:NO)
+endif()
+
 # Convenience target: run the freshly built exe.
 if(MSVC)
     add_custom_target(run
