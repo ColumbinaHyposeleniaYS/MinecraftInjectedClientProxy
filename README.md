@@ -28,6 +28,7 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 - 页面内容超出窗口高度时自动出现滚动条（滚轮 / 拖动滑块均可）；输入框为原生 EDIT 控件，支持中文输入法、复制粘贴与全选
 - DWM 集成：Win11 圆角 + 沉浸式深色 + 系统材质（Mica / Acrylic，通过 32bpp ARGB 双缓冲与 `DwmExtendFrameIntoClientArea` 实现，Win10 自动回退）
 - Per-Monitor V2 高 DPI、跟随系统的深浅色切换（`WM_SETTINGCHANGE`）
+- 多语言界面（12 种）：de_DE / en_US / ja_JP / nl_BE / nl_NL / pt_BR / pt_PT / ru_RU / tr_TR / uk_UA / zh_CN / zh_TW，首次启动跟随系统语言，设置页可随时切换（语言菜单以各自语言的原名显示）；字符串表由 `tools/gen_lang.py` 生成（`src/app/lang/`，纯 ASCII `\uXXXX` 转义，无编码依赖）
 - 注入引擎移植自上游 Compass（反射式注入，`src/core/injectcore/`），支持驻留代理恢复信号
 - 端口探测基于 `GetExtendedTcpTable`（不建套接字），可判断"目标 PID 是否已监听端口"与 B 端连接数
 - 单实例运行：重复启动不会开第二个窗口，只会把已打开的窗口还原并置顶；「以管理员运行」由新实例接管（旧实例在提权成功后自动退出），UAC 取消则留在原地

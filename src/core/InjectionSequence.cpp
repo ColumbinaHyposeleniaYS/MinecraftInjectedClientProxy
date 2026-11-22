@@ -1,5 +1,6 @@
 #include "core/InjectionSequence.h"
 
+#include "app/Lang.h"
 #include "core/Injector.h"
 #include "core/PortProbe.h"
 #include "core/ProcessFinder.h"
@@ -88,7 +89,7 @@ void InjectionSequence::Run(Config config)
     {
         Progress p;
         p.state = State::WaitWindow;
-        p.message = L"正在等待目标窗口出现…";
+        p.message = lang::Tr(Str::SeqWaitWin);
         Publish(p, false);
     }
 
@@ -100,7 +101,7 @@ void InjectionSequence::Run(Config config)
             Progress p;
             p.state = State::Cancelled;
             p.ok = false;
-            p.message = L"已取消注入";
+            p.message = lang::Tr(Str::TsCancelled);
             m_running.store(false);
             Publish(p, true);
             return;
@@ -117,7 +118,7 @@ void InjectionSequence::Run(Config config)
         p.state = State::Injecting;
         p.pid = target.pid;
         p.windowTitle = target.windowTitle;
-        p.message = L"正在注入代理 DLL…";
+        p.message = lang::Tr(Str::SeqInjectingMsg);
         Publish(p, false);
     }
 
@@ -149,8 +150,8 @@ void InjectionSequence::Run(Config config)
             p.ok = true;
             p.resumed = result.resumed;
             p.message = result.resumed
-                ? FormatStr(L"驻留代理已恢复，端口 %u 就绪", unsigned(config.port))
-                : FormatStr(L"注入完成，代理已监听 %u", unsigned(config.port));
+                ? FormatStr(lang::Tr(Str::SeqResumed), unsigned(config.port))
+                : FormatStr(lang::Tr(Str::SeqDoneMsg), unsigned(config.port));
             m_running.store(false);
             Publish(p, true);
             return;
@@ -167,7 +168,7 @@ void InjectionSequence::Run(Config config)
             p.windowTitle = target.windowTitle;
             p.waitMs = elapsed;
             p.waitTotal = kWaitPortTimeoutMs;
-            p.message = FormatStr(L"等待代理开始监听 %u…", unsigned(config.port));
+            p.message = FormatStr(lang::Tr(Str::SeqWaitPort), unsigned(config.port));
             Publish(p, false);
         }
     }
@@ -179,7 +180,7 @@ void InjectionSequence::Run(Config config)
         p.pid = target.pid;
         p.windowTitle = target.windowTitle;
         p.ok = false;
-        p.message = L"已取消注入";
+        p.message = lang::Tr(Str::TsCancelled);
         m_running.store(false);
         Publish(p, true);
         return;
@@ -191,7 +192,7 @@ void InjectionSequence::Run(Config config)
     p.windowTitle = target.windowTitle;
     p.ok = false;
     p.resumed = result.resumed;
-    p.message = FormatStr(L"注入完成，但 %d 秒内代理未开始监听 %u，请查看日志排查",
+    p.message = FormatStr(lang::Tr(Str::SeqPortTimeout),
                           kWaitPortTimeoutMs / 1000, unsigned(config.port));
     m_running.store(false);
     Publish(p, true);

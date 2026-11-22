@@ -48,6 +48,15 @@ SettingsData SettingsStore::Load()
                : backdrop == 2 ? Backdrop::Acrylic
                                : Backdrop::None;
 
+    // Language: never-set (-1) resolves from the system locale so the app
+    // follows the user's Windows on first run, then sticks to the INI value.
+    d.lang = ReadInt(kSectionUi, L"lang", -1);
+    if (d.lang < 0 || d.lang >= lang::kLangCount)
+    {
+        d.lang = int(lang::DetectSystemLang());
+        // Not marked dirty here; the value persists on the next Save anyway.
+    }
+
     d.dllPath = ReadString(kSectionInject, L"dllPath", L"");
 
     d.keyword = ReadString(kSectionInject, L"windowKeyword", L"");
@@ -79,6 +88,7 @@ void SettingsStore::Save(const SettingsData& d)
     WriteInt(kSectionUi, L"themePref", static_cast<int>(d.theme));
     WriteInt(kSectionUi, L"backdrop", d.backdrop == Backdrop::Mica ? 1
                                   : d.backdrop == Backdrop::Acrylic ? 2 : 0);
+    WriteInt(kSectionUi, L"lang", d.lang);
     WriteString(kSectionInject, L"dllPath", d.dllPath);
     WriteString(kSectionInject, L"windowKeyword", d.keyword);
     WriteInt(kSectionInject, L"port", d.port);

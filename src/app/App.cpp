@@ -1,5 +1,6 @@
 #include "app/App.h"
 
+#include "app/Lang.h"
 #include "core/AppPaths.h"
 #include "core/Injector.h"
 #include "core/PortProbe.h"
@@ -16,15 +17,29 @@ namespace micp {
 
 App g_app;
 
-static const PageInfo kPages[PgCount] = {
-    {L"\u603b\u89c8", IconKind::Gauge},  // 总览
-    {L"\u6ce8\u5165", IconKind::Zap},    // 注入
-    {L"\u65e5\u5fd7", IconKind::Doc},    // 日志
-    {L"\u8bbe\u7f6e", IconKind::Gear},   // 设置
-    {L"\u5173\u4e8e", IconKind::Info},   // 关于
+namespace {
+
+// Icons are static; the label pointers are refreshed by PageInfoOf on every
+// call so a language switch is picked up without cache invalidation.
+PageInfo kPages[PgCount] = {
+    {nullptr, IconKind::Gauge},
+    {nullptr, IconKind::Zap},
+    {nullptr, IconKind::Doc},
+    {nullptr, IconKind::Gear},
+    {nullptr, IconKind::Info},
 };
 
-const PageInfo& PageInfoOf(PageId page) { return kPages[page]; }
+} // namespace
+
+const PageInfo& PageInfoOf(PageId page)
+{
+    kPages[PgOverview].label = lang::Tr(Str::PageOverview);
+    kPages[PgInject].label = lang::Tr(Str::PageInject);
+    kPages[PgLogs].label = lang::Tr(Str::PageLogs);
+    kPages[PgSettings].label = lang::Tr(Str::PageSettings);
+    kPages[PgAbout].label = lang::Tr(Str::PageAbout);
+    return kPages[page];
+}
 
 // ------------------------------------------------------------- DWM helpers
 
@@ -155,6 +170,10 @@ void App::Init(HWND hwnd)
 
     m_dpi = QueryDpi(hwnd);
     SetDpi(m_dpi);
+    // Language must be active before fonts are built: the CJK companion
+    // face is chosen per language (YaHei / JhengHei / Yu Gothic).
+    if (m_set.lang >= 0 && m_set.lang < lang::kLangCount)
+        lang::SetLang(static_cast<lang::LangId>(m_set.lang));
     RefreshSystemDark();
     SetThemeMode(m_set.theme);
     RebuildFonts(m_dpi);
@@ -169,8 +188,7 @@ void App::Init(HWND hwnd)
                                  WS_CHILD | ES_AUTOHSCROLL | ES_NUMBER, 0, 0, 10, 10, hwnd,
                                  reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_EDIT_PORT)),
                                  GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
-    SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
+    ApplyEditFonts();
     // macOS-like inner padding for the borderless fields.
     const LPARAM margins = MAKELPARAM(S(8), S(8));
     SendMessageW(m_editKw, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
@@ -199,6 +217,62 @@ void App::Init(HWND hwnd)
     ApplyBackdrop();
     SyncEditsFromSettings();
     m_now = GetTickCount64();
+}
+
+void App::ApplyEditFonts()
+{
+    if (!m_editKw || !m_editPort)
+        return;
+    const HFONT f = WFont(FBody, lang::UsesCjkFace());
+    SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+}
+
+void App::ApplyLang(lang::LangId id)
+{
+    m_set.lang = int(id);
+    lang::SetLang(id);
+    m_langOpen = false;
+    m_langHover = -1;
+    RebuildFonts(m_dpi);
+    ApplyEditFonts();
+    m_layoutDirty = true;
+    m_dirty = true;
+    InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+RectF App::LangPopupRect() const
+{
+    if (!m_langOpen || m_lay.stLangValue.w <= 0)
+        return RectF();
+    const float rowH = float(S(30));
+    const float listH = float(lang::kLangCount) * rowH;
+    // Field position in viewport coords (page scroll applied).
+    const float fieldBottom = m_lay.stLangValue.bottom() - m_pageScroll;
+    const float fieldTop = m_lay.stLangValue.y - m_pageScroll;
+    const float gap = float(S(6));
+    float y = fieldBottom + gap;
+    float avail = m_lay.root.bottom() - y - float(S(10));
+    if (avail < rowH * 4)
+    {
+        // Not enough room below: open upwards instead.
+        y = fieldTop - gap;
+        avail = y - float(S(10));
+        y -= rowH * 4; // provisional height (at least 4 rows)
+        if (avail > rowH * 4)
+        {
+            const float h = listH < avail ? listH : avail;
+            y = fieldTop - gap - h;
+        }
+        else if (y < float(S(10)))
+        {
+            y = float(S(10));
+        }
+    }
+    float h = listH < avail ? listH : avail;
+    if (h < rowH)
+        h = rowH;
+    return RectF(m_lay.stLangValue.x, y, m_lay.stLangValue.w, h);
 }
 
 void App::Shutdown()
@@ -264,7 +338,7 @@ void App::ApplyBackdrop()
             effective = Backdrop::None;
             m_set.backdrop = Backdrop::None;
             m_dirty = true;
-            ShowToast(L"\u5f53\u524d\u7cfb\u7edf\u4e0d\u652f\u6301\u8be5\u6750\u8d28\uff0c\u5df2\u81ea\u52a8\u5173\u95ed", 2); // 当前系统不支持该材质，已自动关闭
+            ShowToast(lang::Tr(Str::TsBackdropUnsupported), 2); // 当前系统不支持该材质，已自动关闭
         }
         else if (DwmSetAttr() && build < 22621)
         {
@@ -366,7 +440,7 @@ void App::Relayout()
             y = L.ovWarn.bottom() + float(S(14));
             BtnDef b;
             b.id = ID_BTN_GOTO_INJECT;
-            b.label = L"\u53bb\u9009\u62e9"; // 去选择
+            b.label = lang::Tr(Str::GoSelect); // 去选择
             b.style = 3;
             b.r = RectF(L.ovWarn.right() - cardPad - float(S(88)),
                         L.ovWarn.y + (L.ovWarn.h - float(S(28))) / 2, float(S(88)), float(S(28)));
@@ -378,7 +452,7 @@ void App::Relayout()
         {
             BtnDef b;
             b.id = ID_BTN_INJECT;
-            b.label = L"\u4e00\u952e\u6ce8\u5165"; // 一键注入
+            b.label = lang::Tr(Str::OneClickInject); // 一键注入
             b.style = 0;
             b.enabled = !m_seq.IsRunning();
             b.r = RectF(L.ovStatus.right() - cardPad - float(S(128)),
@@ -395,7 +469,7 @@ void App::Relayout()
         {
             BtnDef b;
             b.id = ID_BTN_GOTO_SETTINGS;
-            b.label = L"\u8c03\u6574"; // 调整
+            b.label = lang::Tr(Str::Adjust); // 调整
             b.style = 3;
             b.r = RectF(L.ovInfo.right() - cardPad - float(S(64)),
                         L.ovInfo.y + cardPad, float(S(64)), float(S(26)));
@@ -436,7 +510,7 @@ void App::Relayout()
             L.ijBrowse = RectF(L.ijRowDll.right() + float(S(8)), rowY, float(S(80)), fieldH);
             BtnDef b;
             b.id = ID_BTN_BROWSE_DLL;
-            b.label = L"\u6d4f\u89c8\u2026"; // 浏览…
+            b.label = lang::Tr(Str::Browse); // 浏览…
             b.style = 1;
             b.r = L.ijBrowse;
             L.btns.push_back(b);
@@ -492,15 +566,15 @@ void App::Relayout()
             BtnDef go;
             go.id = ID_BTN_INJECT;
             go.label = m_seq.IsRunning()
-                ? L"\u6ce8\u5165\u4e2d\u2026" // 注入中…
-                : L"\u5f00\u59cb\u6ce8\u5165"; // 开始注入
+                ? lang::Tr(Str::Injecting) // 注入中…
+                : lang::Tr(Str::StartInject); // 开始注入
             go.style = 0;
             go.enabled = !m_seq.IsRunning();
             go.r = L.ijBtnGo;
             L.btns.push_back(go);
             BtnDef re;
             re.id = ID_BTN_RECHECK;
-            re.label = L"\u91cd\u65b0\u68c0\u6d4b"; // 重新检测
+            re.label = lang::Tr(Str::Recheck); // 重新检测
             re.style = 1;
             re.r = L.ijBtnRecheck;
             L.btns.push_back(re);
@@ -508,7 +582,7 @@ void App::Relayout()
             {
                 BtnDef cancel;
                 cancel.id = ID_BTN_CANCEL_INJ;
-                cancel.label = L"\u53d6\u6d88\u6ce8\u5165"; // 取消注入
+                cancel.label = lang::Tr(Str::CancelInject); // 取消注入
                 cancel.style = 2;
                 cancel.danger = true;
                 cancel.r = L.ijBtnCancel;
@@ -528,7 +602,7 @@ void App::Relayout()
             s.id = ID_SEG_LOGFILTER;
             s.r = L.lgSeg;
             s.sel = m_filter;
-            s.items = {L"\u5168\u90e8", L"\u4fe1\u606f", L"\u8b66\u544a", L"\u9519\u8bef"}; // 全部/信息/警告/错误
+            s.items = {lang::Tr(Str::FilterAll), lang::Tr(Str::FilterInfo), lang::Tr(Str::FilterWarn), lang::Tr(Str::FilterError)}; // 全部/信息/警告/错误
             L.segs.push_back(s);
         }
 
@@ -541,13 +615,13 @@ void App::Relayout()
         {
             BtnDef clear;
             clear.id = ID_BTN_CLEAR_LOG;
-            clear.label = L"\u6e05\u7a7a"; // 清空
+            clear.label = lang::Tr(Str::Clear); // 清空
             clear.style = 1;
             clear.r = L.lgBtnClear;
             L.btns.push_back(clear);
             BtnDef openF;
             openF.id = ID_BTN_OPEN_LOGFILE;
-            openF.label = L"\u6253\u5f00\u6587\u4ef6"; // 打开文件
+            openF.label = lang::Tr(Str::OpenFile); // 打开文件
             openF.style = 1;
             openF.r = L.lgBtnOpen;
             L.btns.push_back(openF);
@@ -576,7 +650,8 @@ void App::Relayout()
 
         // 外观
         {
-            const float h = float(S(24)) + LineH(FHead) + float(S(14)) + 2 * float(S(46))
+            // header + three rows (theme / backdrop / language) + note
+            const float h = float(S(24)) + LineH(FHead) + float(S(14)) + 3 * float(S(46))
                             + float(S(30));
             L.stAppearance = RectF(L.pageBox.x, y, L.pageBox.w, h);
             float rowY = L.stAppearance.y + float(S(24)) + LineH(FHead) + float(S(14));
@@ -587,7 +662,7 @@ void App::Relayout()
                 s.id = ID_SEG_THEME;
                 s.r = L.stSegTheme;
                 s.sel = static_cast<int>(m_set.theme);
-                s.items = {L"\u8ddf\u968f\u7cfb\u7edf", L"\u6d45\u8272", L"\u6df1\u8272"}; // 跟随系统/浅色/深色
+                s.items = {lang::Tr(Str::ThemeSystem), lang::Tr(Str::ThemeLight), lang::Tr(Str::ThemeDark)}; // 跟随系统/浅色/深色
                 L.segs.push_back(s);
             }
             rowY += float(S(46));
@@ -599,9 +674,15 @@ void App::Relayout()
                 s.r = L.stSegBackdrop;
                 s.sel = m_set.backdrop == Backdrop::None ? 0
                        : m_set.backdrop == Backdrop::Mica ? 1 : 2;
-                s.items = {L"\u5173\u95ed", L"\u4e91\u6bcd", L"\u4e9a\u514b\u529b"}; // 关闭/云母/亚克力
+                s.items = {lang::Tr(Str::BackdropOff), lang::Tr(Str::BackdropMica), lang::Tr(Str::BackdropAcrylic)}; // 关闭/云母/亚克力
                 L.segs.push_back(s);
             }
+            rowY += float(S(46));
+            // Language row: label + a field-style picker (opens the popup).
+            L.stLangLabel = RectF(L.stAppearance.x + float(S(18)), rowY, labelW, segH);
+            L.stLangValue = RectF(L.stLangLabel.right() + float(S(16)), rowY, segW,
+                                  float(S(32)));
+            (void)L.stLangRow;
             y = L.stAppearance.bottom() + float(S(14));
         }
 
@@ -648,13 +729,13 @@ void App::Relayout()
                 row.r = L.stRowLog;
                 row.text = m_set.logPathOverride.empty() ? m_logSource : m_set.logPathOverride;
                 if (TrimW(row.text).empty())
-                    row.text = L"\u81ea\u52a8\u63a2\u6d4b\uff08\u5c1a\u672a\u53d1\u73b0\u65e5\u5fd7\uff09"; // 自动探测（尚未发现日志）
+                    row.text = lang::Tr(Str::AutoDetectPlaceholder); // 自动探测（尚未发现日志）
                 row.icon = IconKind::Terminal;
                 L.rows.push_back(row);
                 L.stBrowseLog = RectF(L.stRowLog.right() + float(S(8)), rowY, float(S(80)), fieldH);
                 BtnDef b;
                 b.id = ID_BTN_BROWSE_LOG;
-                b.label = L"\u6d4f\u89c8\u2026";
+                b.label = lang::Tr(Str::Browse);
                 b.style = 1;
                 b.r = L.stBrowseLog;
                 L.btns.push_back(b);
@@ -672,7 +753,7 @@ void App::Relayout()
                                  float(S(132)), float(S(32)));
             BtnDef b;
             b.id = ID_BTN_RESET;
-            b.label = L"\u6062\u590d\u9ed8\u8ba4\u8bbe\u7f6e"; // 恢复默认设置
+            b.label = lang::Tr(Str::ResetDefaults); // 恢复默认设置
             b.style = 2;
             b.danger = true;
             b.r = L.stBtnReset;
@@ -701,13 +782,13 @@ void App::Relayout()
         {
             BtnDef gh;
             gh.id = ID_BTN_GITHUB;
-            gh.label = L"GitHub \u4ed3\u5e93"; // GitHub 仓库
+            gh.label = lang::Tr(Str::GitHubRepo); // GitHub 仓库
             gh.style = 0;
             gh.r = L.abBtnGh;
             L.btns.push_back(gh);
             BtnDef doc;
             doc.id = ID_BTN_ADMIN_RESTART;
-            doc.label = L"\u4ee5\u7ba1\u7406\u5458\u8fd0\u884c"; // 以管理员运行
+            doc.label = lang::Tr(Str::RunAsAdmin); // 以管理员运行
             doc.style = 1;
             doc.r = L.abBtnDoc;
             L.btns.push_back(doc);
@@ -883,8 +964,7 @@ void App::OnDpiChanged(int dpi, const RECT* suggested)
     m_dpi = dpi;
     SetDpi(dpi);
     RebuildFonts(dpi);
-    SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
-    SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
+    ApplyEditFonts();
     const LPARAM margins = MAKELPARAM(S(8), S(8));
     SendMessageW(m_editKw, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
     SendMessageW(m_editPort, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
@@ -913,6 +993,7 @@ void App::OnMouseLeave()
     m_hoverId = 0;
     m_tlHoverAny = false;
     m_tlHoverIdx = -1;
+    m_langHover = -1;
     for (auto& kv : m_hoverAnims)
         kv.second.target = 0;
     InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -984,6 +1065,33 @@ void App::OnMouseMove(POINT pt, bool fromNc)
     const POINT raw = pt;
     pt = MapContentPoint(pt);
 
+    // While the language picker is open it owns the cursor: rows highlight,
+    // every other control's hover fade is switched off.
+    if (m_langOpen)
+    {
+        const RectF pop = LangPopupRect();
+        int idx = -1;
+        if (pop.w > 0 && pop.contains(float(raw.x), float(raw.y)))
+        {
+            const float rowH = float(S(30));
+            idx = int((float(raw.y) - pop.y + m_langScroll) / rowH);
+            if (idx < 0 || idx >= lang::kLangCount)
+                idx = -1;
+        }
+        const int newHover = idx >= 0 ? ID_LANG_ITEM + idx : 0;
+        if (newHover != m_hoverId || idx != m_langHover)
+        {
+            for (auto& kv : m_hoverAnims)
+                kv.second.target = 0;
+            if (newHover)
+                SetHoverTarget(newHover, true);
+            m_hoverId = newHover;
+            m_langHover = idx;
+            InvalidateRect(m_hwnd, nullptr, FALSE);
+        }
+        return;
+    }
+
     int hover = 0;
     bool tlAny = false;
     int tlIdx = -1;
@@ -1016,6 +1124,10 @@ void App::OnMouseMove(POINT pt, bool fromNc)
             if (row.r.contains(float(pt.x), float(pt.y)))
                 hover = row.id;
     }
+    // The language picker field highlights like the other controls.
+    if (!hover && m_page == PgSettings && L.stLangValue.w > 0
+        && L.stLangValue.contains(float(pt.x), float(pt.y)))
+        hover = ID_LANG_ROW;
     if (!hover)
     {
         for (const SegDef& seg : L.segs)
@@ -1055,6 +1167,28 @@ void App::OnLButtonDown(POINT pt)
 {
     const Layout& L = Lay();
     float px = float(pt.x), py = float(pt.y);
+
+    // Language picker popup: while open it swallows every click.
+    if (m_langOpen)
+    {
+        const RectF pop = LangPopupRect();
+        if (pop.w > 0 && pop.contains(px, py))
+        {
+            const float rowH = float(S(30));
+            const int idx = int((py - pop.y + m_langScroll) / rowH);
+            if (idx >= 0 && idx < lang::kLangCount)
+                ApplyLang(static_cast<lang::LangId>(idx));
+            else
+                InvalidateRect(m_hwnd, nullptr, FALSE);
+            return;
+        }
+        // Click outside: close. Clicking the field itself would only
+        // re-open it, so treat that as close-and-stay too.
+        m_langOpen = false;
+        m_langHover = -1;
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+        return;
+    }
 
     // traffic lights
     for (int i = 0; i < 3; ++i)
@@ -1167,6 +1301,26 @@ void App::OnLButtonDown(POINT pt)
             return;
         }
 
+    // language field opens the picker (layout coords; the page scroll is
+    // already baked into px/py at this point)
+    if (m_page == PgSettings && L.stLangValue.w > 0
+        && L.stLangValue.contains(px, py))
+    {
+        m_langOpen = true;
+        const float rowH = float(S(30));
+        m_langScroll = 0;
+        // Bring the current language into view immediately.
+        const RectF pop = LangPopupRect();
+        if (pop.w > 0)
+        {
+            const float curY = float(int(lang::Current())) * rowH;
+            if (curY + rowH > pop.h)
+                m_langScroll = curY + rowH - pop.h;
+        }
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+        return;
+    }
+
     // buttons & path rows act on release
     for (const BtnDef& b : L.btns)
         if (b.r.contains(px, py))
@@ -1244,6 +1398,26 @@ void App::OnLButtonUp(POINT pt)
 void App::OnMouseWheel(POINT pt, int delta)
 {
     const Layout& L = Lay();
+    // The open language picker takes the wheel first (modal-ish).
+    if (m_langOpen)
+    {
+        const RectF pop = LangPopupRect();
+        if (pop.w > 0)
+        {
+            const float rowH = float(S(30));
+            const float maxScroll = float(lang::kLangCount) * rowH - pop.h;
+            if (maxScroll > 0)
+            {
+                m_langScroll -= (delta / float(WHEEL_DELTA)) * rowH * 3;
+                if (m_langScroll < 0)
+                    m_langScroll = 0;
+                if (m_langScroll > maxScroll)
+                    m_langScroll = maxScroll;
+                InvalidateRect(m_hwnd, nullptr, FALSE);
+            }
+        }
+        return;
+    }
     if (m_page == PgLogs)
     {
         if (!(L.lgCard.contains(float(pt.x), float(pt.y))))
@@ -1605,9 +1779,9 @@ void App::StartInject()
         m_stepState[0] = 3;
         m_stepDetail[0] = dll;
         m_bannerKind = 2;
-        m_bannerText = L"\u672a\u627e\u5230\u4ee3\u7406 DLL\uff0c\u8bf7\u5c06 Aurora.dll \u653e\u5230\u7a0b\u5e8f\u540c\u76ee\u5f55\uff0c\u6216\u5728\u4e0a\u65b9\u9009\u62e9"; // 未找到代理 DLL，请将 Aurora.dll 放到程序同目录，或在上方选择
+        m_bannerText = lang::Tr(Str::TsDllMissingLong); // 未找到代理 DLL，请将 Aurora.dll 放到程序同目录，或在上方选择
         SwitchPage(PgInject);
-        ShowToast(L"\u672a\u627e\u5230 Aurora.dll", 3);
+        ShowToast(lang::Tr(Str::OvDllMissing), 3);
         m_layoutDirty = true;
         return;
     }
@@ -1623,7 +1797,7 @@ void App::StartInject()
     {
         m_lastSeqPhase = InjectionSequence::State::WaitWindow;
         SwitchPage(PgInject);
-        ShowToast(L"\u5df2\u5f00\u59cb\u6ce8\u5165\u6d41\u7a0b", 0); // 已开始注入流程
+        ShowToast(lang::Tr(Str::TsInjectStarted), 0); // 已开始注入流程
         m_layoutDirty = true;
     }
 }
@@ -1636,14 +1810,14 @@ void App::RecheckTargets()
     if (t.valid())
     {
         const bool listening = PortProbe::IsListening(t.pid, uint16_t(m_set.port));
-        ShowToast(FormatStr(L"\u76ee\u6807\u7a97\u53e3\uff1a\u300a%s\u300b PID %u%s",
+        ShowToast(FormatStr(lang::Tr(Str::TsTargetFmt),
                             t.windowTitle.c_str(), t.pid,
-                            listening ? L" \u00b7 \u4ee3\u7406\u5df2\u5728\u76d1\u542c"
+                            listening ? lang::Tr(Str::TsListeningSuffix)
                                       : L""), listening ? 1 : 0);
     }
     else
     {
-        ShowToast(FormatStr(L"\u672a\u627e\u5230\u6807\u9898\u5305\u542b\u300c%s\u300d\u7684 Java \u7a97\u53e3",
+        ShowToast(FormatStr(lang::Tr(Str::TsWinNotFound),
                             m_set.keyword.c_str()), 2);
     }
     m_layoutDirty = true;
@@ -1657,18 +1831,18 @@ void App::OnSeqUpdate(bool finished)
     {
     case InjectionSequence::State::WaitWindow:
         m_stepState[1] = 1;
-        m_stepDetail[1] = FormatStr(L"\u6b63\u5728\u7b49\u5f85\u6807\u9898\u542b\u300c%s\u300d\u7684\u7a97\u53e3\u2026",
+        m_stepDetail[1] = FormatStr(lang::Tr(Str::TsWaitingWin),
                                     m_set.keyword.c_str());
         break;
     case InjectionSequence::State::Injecting:
         m_stepState[1] = 2;
-        m_stepDetail[1] = FormatStr(L"\u300a%s\u300b \u00b7 PID %u", p.windowTitle.c_str(), p.pid);
+        m_stepDetail[1] = FormatStr(lang::Tr(Str::OvSubFound), p.windowTitle.c_str(), p.pid);
         m_stepState[2] = 1;
         m_stepDetail[2] = p.message;
         break;
     case InjectionSequence::State::WaitPort:
         m_stepState[2] = 2;
-        m_stepDetail[2] = L"DLL \u5df2\u52a0\u8f7d\uff0c\u7b49\u5f85\u4ee3\u7406\u542f\u52a8"; // DLL 已加载，等待代理启动
+        m_stepDetail[2] = lang::Tr(Str::TsDllLoaded); // DLL 已加载，等待代理启动
         m_stepState[3] = 1;
         m_stepDetail[3] = FormatStr(L"%.1f / %.0f s", p.waitMs / 1000.0f, p.waitTotal / 1000.0f);
         m_stepProgress = p.waitTotal > 0 ? float(p.waitMs) / float(p.waitTotal) : 0.0f;
@@ -1690,7 +1864,7 @@ void App::OnSeqUpdate(bool finished)
         break;
     case InjectionSequence::State::Cancelled:
         m_bannerKind = 3;
-        m_bannerText = L"\u5df2\u53d6\u6d88\u6ce8\u5165";
+        m_bannerText = lang::Tr(Str::TsCancelled);
         break;
     default:
         break;
@@ -1731,6 +1905,8 @@ void App::SwitchPage(PageId page)
     m_page = page;
     m_hoverId = 0;
     m_pressId = 0;
+    m_langOpen = false; // a page switch closes the language picker
+    m_langHover = -1;
     for (auto& kv : m_hoverAnims)
         kv.second.target = 0;
     m_pageScroll = 0;      // fresh page starts at the top
@@ -1801,7 +1977,7 @@ void App::OnCommand(int id)
     else if (id == ID_BTN_CANCEL_INJ)
     {
         m_seq.Cancel();
-        ShowToast(L"\u6b63\u5728\u53d6\u6d88\u2026", 0);
+        ShowToast(lang::Tr(Str::TsCancelling), 0);
     }
     else if (id == ID_BTN_BROWSE_DLL || id == ID_ROW_DLL)
     {
@@ -1823,7 +1999,7 @@ void App::OnCommand(int id)
         if (!m_logSource.empty() && FileExistsW(m_logSource))
             ShellExecuteW(m_hwnd, L"open", L"notepad.exe", m_logSource.c_str(), nullptr, SW_SHOWNORMAL);
         else
-            ShowToast(L"\u65e5\u5fd7\u6587\u4ef6\u5c1a\u4e0d\u5b58\u5728", 2);
+            ShowToast(lang::Tr(Str::TsLogNotExist), 2);
     }
     else if (id == ID_BTN_BROWSE_LOG || id == ID_ROW_LOG)
     {
@@ -1846,6 +2022,9 @@ void App::OnCommand(int id)
     {
         const SettingsData old = m_set;
         SettingsData fresh;
+        // The UI language survives a reset: flipping it back to a language
+        // the user cannot read would lock them out of the settings page.
+        fresh.lang = old.lang;
         fresh.hasPlacement = old.hasPlacement;
         fresh.winX = old.winX; fresh.winY = old.winY;
         fresh.winW = old.winW; fresh.winH = old.winH;
@@ -1861,7 +2040,7 @@ void App::OnCommand(int id)
         m_logScroll = 0;
         SaveNow();
         m_layoutDirty = true;
-        ShowToast(L"\u5df2\u6062\u590d\u9ed8\u8ba4\u8bbe\u7f6e", 1);
+        ShowToast(lang::Tr(Str::TsResetDone), 1);
     }
     else if (id == ID_BTN_GITHUB)
     {
@@ -1886,7 +2065,7 @@ void App::OnCommand(int id)
         if (ShellExecuteExW(&sei))
             PostMessageW(m_hwnd, WM_CLOSE, 0, 0); // orderly exit (saves settings)
         else
-            ShowToast(L"\u5df2\u53d6\u6d88\u7ba1\u7406\u5458\u91cd\u542f", 2); // 已取消管理员重启
+            ShowToast(lang::Tr(Str::TsAdminCancelled), 2); // 已取消管理员重启
     }
 }
 
@@ -1896,10 +2075,10 @@ void App::BrowseDll()
     OPENFILENAMEW ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = m_hwnd;
-    ofn.lpstrFilter = L"\u4ee3\u7406 DLL (Aurora.dll;*.dll)\0*.dll\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0"; // 代理 DLL / 所有文件
+    ofn.lpstrFilter = lang::Tr(Str::DlgDllFilter); // 代理 DLL / 所有文件
     ofn.lpstrFile = file;
     ofn.nMaxFile = MICP_ARRLEN(file);
-    ofn.lpstrTitle = L"\u9009\u62e9\u4ee3\u7406 DLL\uff08Aurora.dll\uff09";
+    ofn.lpstrTitle = lang::Tr(Str::DlgDllTitle);
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     const std::wstring startDir = AppPaths::AppDir();
     ofn.lpstrInitialDir = startDir.c_str();
@@ -1909,7 +2088,7 @@ void App::BrowseDll()
         m_dllFound = Injector::FileReadable(m_set.dllPath);
         m_dirty = true;
         m_layoutDirty = true;
-        ShowToast(L"\u5df2\u9009\u62e9\u4ee3\u7406 DLL", 1);
+        ShowToast(lang::Tr(Str::TsDllChosen), 1);
     }
 }
 
@@ -1919,10 +2098,10 @@ void App::BrowseLog()
     OPENFILENAMEW ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = m_hwnd;
-    ofn.lpstrFilter = L"\u65e5\u5fd7\u6587\u4ef6 (*.log;*.txt)\0*.log;*.txt\0\u6240\u6709\u6587\u4ef6 (*.*)\0*.*\0"; // 日志文件 / 所有文件
+    ofn.lpstrFilter = lang::Tr(Str::DlgLogFilter); // 日志文件 / 所有文件
     ofn.lpstrFile = file;
     ofn.nMaxFile = MICP_ARRLEN(file);
-    ofn.lpstrTitle = L"\u9009\u62e9\u65e5\u5fd7\u6587\u4ef6";
+    ofn.lpstrTitle = lang::Tr(Str::DlgLogTitle);
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     if (GetOpenFileNameW(&ofn))
     {
@@ -1934,7 +2113,7 @@ void App::BrowseLog()
         m_logPinned = true;
         m_dirty = true;
         m_layoutDirty = true;
-        ShowToast(L"\u5df2\u5207\u6362\u65e5\u5fd7\u6765\u6e90", 1);
+        ShowToast(lang::Tr(Str::TsLogSourceChosen), 1);
     }
 }
 

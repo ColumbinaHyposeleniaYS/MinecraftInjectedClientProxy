@@ -2,6 +2,7 @@
 // Application state and orchestration. Owns the settings, injection sequence,
 // proxy monitor, log buffer, page/chrome layout and all input routing.
 
+#include "app/Lang.h"
 #include "app/Theme.h"
 #include "app/Ui.h"
 #include "core/InjectionSequence.h"
@@ -58,6 +59,9 @@ enum {
 
     ID_ROW_DLL = 60,
     ID_ROW_LOG = 61,
+
+    ID_LANG_ROW = 70,   // settings: language field (opens the picker)
+    ID_LANG_ITEM = 71,  // picker rows: ID_LANG_ITEM + langIndex
 
     ID_PAGE_SB = 90, // overlay scrollbar hit zone (page)
     ID_LOG_SB = 91,  // overlay scrollbar hit zone (logs card)
@@ -147,6 +151,7 @@ struct Layout
     RectF stSegTheme, stSegBackdrop, stSegThemeLabel, stSegBackdropLabel;
     RectF stTgl[3], stTglLabel[3];
     RectF stRowLog, stBrowseLog, stBtnReset, stIniLabel;
+    RectF stLangRow, stLangLabel, stLangValue; // language picker field
 
     // about
     RectF abIcon, abName, abVersion, abTag, abBtnGh, abBtnDoc, abFoot;
@@ -227,6 +232,9 @@ private:
     POINT MapContentPoint(POINT pt) const; // layout coords for page controls
     void ApplyThemeInternal();
     void ApplyBackdrop();
+    void ApplyEditFonts();
+    void ApplyLang(lang::LangId id); // switch language + rebuild fonts/layout
+    RectF LangPopupRect() const;     // open picker geometry (window coords)
     void SyncEditsFromSettings();
     void AppendLogLines(const std::vector<std::wstring>& lines);
     float LogMaxScroll(const Layout& L) const; // logs content height overflow
@@ -307,6 +315,11 @@ public:
     float m_pageScroll = 0;
     bool m_pageThumbDrag = false;
     float m_pageThumbGrab = 0;
+
+    // language picker popup (settings page; drawn above everything else)
+    bool m_langOpen = false;
+    int m_langHover = -1;    // hovered row, -1 none
+    float m_langScroll = 0;  // px scrolled into the 12-row list
 
     // toast
     std::wstring m_toastText;

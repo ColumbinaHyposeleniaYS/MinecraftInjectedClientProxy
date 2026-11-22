@@ -1,5 +1,7 @@
 #include "app/Theme.h"
 
+#include "app/Lang.h"
+
 #include <cstdarg>
 #include <cwctype>
 #include <cstring>
@@ -257,8 +259,10 @@ void RebuildFonts(int dpi)
         const FontSpec& spec = kSpecs[i];
         const int px = int(spec.px96 * scale + 0.5);
 
+        // The CJK companion face depends on the active language (YaHei /
+        // JhengHei / Yu Gothic); the latin face is always Segoe UI Variable.
         const wchar_t* latin = spec.mono ? L"Consolas" : L"Segoe UI Variable Text";
-        const wchar_t* cjk = spec.mono ? L"Microsoft YaHei UI" : L"Microsoft YaHei UI";
+        const wchar_t* cjk = spec.mono ? L"Microsoft YaHei UI" : lang::CjkFontFace();
         const int cjkWeight = spec.mono ? 400 : spec.weight;
 
         g_slots[i].latin = CreateFontW(-px, 0, 0, 0, spec.weight, FALSE, FALSE, FALSE,

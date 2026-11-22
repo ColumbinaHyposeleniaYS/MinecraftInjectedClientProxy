@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(MinecraftInjectedClientProxy
-    VERSION 1.0.4
+    VERSION 1.0.5
     DESCRIPTION "Minecraft 1.20.1 injected client proxy - desktop GUI"
     LANGUAGES C CXX)
 
@@ -41,6 +41,7 @@ endif()
 add_executable(micp WIN32
     src/main.cpp
     src/app/App.cpp
+    src/app/Lang.cpp
     src/app/Paint.cpp
     src/app/Theme.cpp
     src/app/Ui.cpp

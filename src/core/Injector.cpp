@@ -1,5 +1,6 @@
 #include "core/Injector.h"
 
+#include "app/Lang.h"
 #include "core/injectcore/Inject.h"
 
 namespace micp {
@@ -11,27 +12,27 @@ std::wstring TranslateEngineMessage(const std::string& raw, uint32_t winError)
     auto has = [&raw](const char* needle) { return raw.find(needle) != std::string::npos; };
 
     if (has("Failed to open the DLL file"))
-        return L"无法打开 DLL 文件，请检查路径是否有效";
+        return lang::Tr(Str::ErrOpenDll);
     if (has("Failed to get the DLL file size"))
-        return L"无法读取 DLL 文件大小，文件可能已损坏";
+        return lang::Tr(Str::ErrDllSize);
     if (has("Failed to read the DLL file"))
-        return L"读取 DLL 文件失败";
+        return lang::Tr(Str::ErrDllRead);
     if (has("Failed to open the target process"))
-        return L"打开目标进程失败（游戏可能以管理员身份运行，请以管理员身份重启本程序）";
+        return lang::Tr(Str::ErrOpenProc);
     if (has("Failed to inject the DLL"))
-        return FormatStr(L"注入 DLL 失败（错误码 %u），请确认目标进程与系统版本匹配", winError);
+        return FormatStr(lang::Tr(Str::ErrInjectFail), winError);
     if (has("Could not signal resident proxy"))
-        return FormatStr(L"向驻留代理发送恢复信号失败（错误码 %u）", winError);
+        return FormatStr(lang::Tr(Str::ErrResumeFail), winError);
     if (has("Reactivation requested"))
-        return L"已通知驻留代理恢复运行（未重新加载磁盘 DLL）";
+        return lang::Tr(Str::ErrResumeInfo);
     if (has("Injected the DLL"))
-        return L"DLL 注入成功";
+        return lang::Tr(Str::ErrInjectOk);
     if (!raw.empty())
     {
         std::wstring wide(raw.begin(), raw.end());
         return wide;
     }
-    return L"未知错误";
+    return lang::Tr(Str::ErrUnknown);
 }
 
 } // namespace
@@ -52,7 +53,7 @@ InjectionResult Run(DWORD pid, const std::wstring& dllPath)
 
     if (!FileReadable(dllPath))
     {
-        result.message = FormatStr(L"找不到代理 DLL：%s", dllPath.c_str());
+        result.message = FormatStr(lang::Tr(Str::ErrDllNotFound), dllPath.c_str());
         return result;
     }
 
@@ -70,7 +71,7 @@ InjectionResult Run(DWORD pid, const std::wstring& dllPath)
     }
     if (ansiPath.empty())
     {
-        result.message = L"路径转换失败";
+        result.message = lang::Tr(Str::ErrPathConv);
         return result;
     }
 

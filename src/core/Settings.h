@@ -3,6 +3,7 @@
 // %APPDATA%\MinecraftInjectedClientProxy (same file layout as earlier
 // releases, so existing configs keep working).
 
+#include "app/Lang.h"
 #include "app/Theme.h"
 #include "common.h"
 
@@ -12,6 +13,10 @@ struct SettingsData
 {
     ThemeMode theme = ThemeMode::System;
     Backdrop backdrop = Backdrop::None;
+
+    // UI language. -1 = never set: resolve from the system locale on load
+    // (falling back to zh_CN) and persist from then on.
+    int lang = -1;
 
     std::wstring dllPath;   // user-chosen override; empty -> auto-detect
     std::wstring keyword;   // window title keyword (default 布吉岛)
