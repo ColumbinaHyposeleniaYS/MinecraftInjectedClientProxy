@@ -127,6 +127,22 @@ int QueryDpi(HWND hwnd)
     return dpi ? dpi : 96;
 }
 
+// --- EDIT subclass ---------------------------------------------------------
+// WM_MOUSEWHEEL is delivered to the focused window; a focused single-line EDIT
+// would swallow it. Forward the wheel to the main window so the page scrolls
+// even while a field has focus.
+WNDPROC g_editOrigProc = nullptr;
+
+LRESULT CALLBACK EditHookProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_MOUSEWHEEL)
+    {
+        SendMessageW(GetParent(h), msg, wParam, lParam);
+        return 0;
+    }
+    return CallWindowProcW(g_editOrigProc, h, msg, wParam, lParam);
+}
+
 } // namespace
 
 // ------------------------------------------------------------------- init
@@ -154,6 +170,13 @@ void App::Init(HWND hwnd)
                                  GetModuleHandleW(nullptr), nullptr);
     SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
     SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
+    // Both edits share the EDIT class proc; hook them once for wheel forwarding.
+    if (!g_editOrigProc)
+    {
+        g_editOrigProc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(m_editKw, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&EditHookProc)));
+        SetWindowLongPtrW(m_editPort, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&EditHookProc));
+    }
 
     m_dllFound = Injector::FileReadable(ResolvedDllPath());
     m_mon.Configure(m_set.keyword, uint16_t(m_set.port));
@@ -317,9 +340,9 @@ void App::Relayout()
     L.pageBox = RectF(L.content.x + (L.content.w - colW) / 2, TITLE_H + float(S(22)),
                       colW, L.content.h - TITLE_H - float(S(22) + S(14)));
     L.pageTop = L.pageBox.y;
-
-    // The EDIT children must follow the inject-page fields.
-    ApplyEditPlacement();
+    // NOTE: the EDIT children are placed at the END of Relayout, once the
+    // page-specific rects (ijEditKw/ijEditPort) are known. Calling here would
+    // position them with zeroed rects - the bug that made the fields unusable.
 
     // ----- page-specific layout -----------------------------------------
     float y = L.pageTop + LineH(FTitle) + float(S(18));
@@ -369,21 +392,29 @@ void App::Relayout()
             L.btns.push_back(b);
         }
 
-        L.ovHint = RectF(L.pageBox.x, y, L.pageBox.w, float(S(112)));
+        L.ovHint = RectF(L.pageBox.x, y, L.pageBox.w, float(S(144)));
+        L.pageContentH = L.ovHint.bottom() + float(S(20));
     }
     else if (m_page == PgInject)
     {
         const float labelW = float(S(96));
         const float fieldH = float(S(32));
+        // Each row: field + a hint line underneath (wraps instead of
+        // overflowing the card like the old right-side hints did).
+        const float rowPitch = float(S(58));
 
-        const float cfgH = float(S(24)) + LineH(FHead) + float(S(14)) + 3 * float(S(52)) + float(S(4));
+        const float cfgH = float(S(24)) + LineH(FHead) + float(S(14)) + 3 * rowPitch
+                            + float(S(6));
         L.ijConfig = RectF(L.pageBox.x, y, L.pageBox.w, cfgH);
 
         float rowY = L.ijConfig.y + float(S(24)) + LineH(FHead) + float(S(14));
         const float fieldW = L.ijConfig.w - cardPad * 2 - labelW - float(S(88));
+        const float hintW = L.ijConfig.w - cardPad - (cardPad + labelW);
+        const float hintY = fieldH + float(S(3));
 
         // DLL row
         L.ijRowDll = RectF(L.ijConfig.x + cardPad + labelW, rowY, fieldW, fieldH);
+        L.ijHintDll = RectF(L.ijRowDll.x, rowY + hintY, hintW, float(LineH(FSmall)));
         {
             RowDef row;
             row.id = ID_ROW_DLL;
@@ -400,23 +431,28 @@ void App::Relayout()
             b.r = L.ijBrowse;
             L.btns.push_back(b);
         }
-        rowY += float(S(52));
+        rowY += rowPitch;
 
         // keyword row
         L.ijRowKw = RectF(L.ijConfig.x + cardPad + labelW, rowY, fieldW, fieldH);
         L.ijEditKw = L.ijRowKw;
-        rowY += float(S(52));
+        L.ijHintKw = RectF(L.ijRowKw.x, rowY + hintY, hintW, float(LineH(FSmall)));
+        rowY += rowPitch;
 
         // port row
         L.ijRowPort = RectF(L.ijConfig.x + cardPad + labelW, rowY, float(S(120)), fieldH);
         L.ijEditPort = L.ijRowPort;
+        L.ijHintPort = RectF(L.ijRowPort.x, rowY + hintY, hintW, float(LineH(FSmall)));
 
+        // Steps card: header + 4 steps + banner + buttons (each in its own
+        // slot so the banner never sits under the action buttons).
         const int stepCount = 4;
-        const float stepsH = float(S(24)) + LineH(FHead) + float(S(14))
-                             + stepCount * float(S(64)) + float(S(52)) + float(S(10));
+        const float stepsPad = float(S(24)) + LineH(FHead) + float(S(14));
+        const float stepsH = stepsPad + stepCount * float(S(64)) + float(S(46))
+                             + float(S(12)) + float(S(38)) + float(S(14));
         L.ijSteps = RectF(L.pageBox.x, L.ijConfig.bottom() + float(S(14)), L.pageBox.w, stepsH);
 
-        float stepY = L.ijSteps.y + float(S(24)) + LineH(FHead) + float(S(14));
+        float stepY = L.ijSteps.y + stepsPad;
         for (int i = 0; i < stepCount; ++i)
         {
             L.ijStepBullets[i] = RectF(L.ijSteps.x + cardPad + float(S(4)),
@@ -426,12 +462,13 @@ void App::Relayout()
                                      L.ijSteps.w - cardPad * 2 - float(S(48)), float(S(64)));
             stepY += float(S(64));
         }
-        L.ijBar = RectF(L.ijStepTexts[3].x, L.ijStepTexts[3].y + float(S(40)), float(S(180)),
+        // progress bar sits below the step-4 detail line, not on top of it
+        L.ijBar = RectF(L.ijStepTexts[3].x, L.ijStepTexts[3].y + float(S(48)), float(S(180)),
                         float(S(6)));
 
         L.ijBanner = RectF(L.ijSteps.x + cardPad, stepY, L.ijSteps.w - cardPad * 2, float(S(46)));
 
-        const float by = L.ijSteps.bottom() - float(S(58));
+        const float by = L.ijBanner.bottom() + float(S(12));
         const float bh = float(S(38));
         L.ijBtnGo = RectF(L.ijSteps.x + cardPad, by, float(S(124)), bh);
         L.ijBtnRecheck = RectF(L.ijBtnGo.right() + float(S(10)), by, float(S(104)), bh);
@@ -463,6 +500,7 @@ void App::Relayout()
                 L.btns.push_back(cancel);
             }
         }
+        L.pageContentH = L.ijSteps.bottom() + float(S(20));
     }
     else if (m_page == PgLogs)
     {
@@ -512,6 +550,8 @@ void App::Relayout()
                          L.lgCard.w - float(S(28)), L.lgCard.h - float(S(36)) - float(S(10)));
         L.lgScroll = RectF(L.lgCard.right() - float(S(12)), L.lgBody.y, float(S(8)),
                            L.lgBody.h);
+        // the logs card always fits the viewport; it scrolls internally
+        L.pageContentH = L.pageBox.h;
     }
     else if (m_page == PgSettings)
     {
@@ -578,7 +618,11 @@ void App::Relayout()
         // 日志来源
         {
             const float fieldH = float(S(32));
-            const float h = float(S(24)) + LineH(FHead) + float(S(14)) + fieldH + float(S(34));
+            const float hintH = float(S(34)); // up to two wrapped lines
+            // field + wrapping hint + settings-file line, stacked without overlap
+            const float h = float(S(24)) + LineH(FHead) + float(S(14)) + fieldH
+                            + float(S(10)) + hintH + float(S(4)) + float(LineH(FSmall))
+                            + float(S(12));
             L.stLog = RectF(L.pageBox.x, y, L.pageBox.w, h);
             const float rowY = L.stLog.y + float(S(24)) + LineH(FHead) + float(S(14));
             const float fieldW = L.stLog.w - float(S(36)) - float(S(88));
@@ -600,8 +644,8 @@ void App::Relayout()
                 b.r = L.stBrowseLog;
                 L.btns.push_back(b);
             }
-            L.stIniLabel = RectF(L.stLog.x + float(S(18)), rowY + fieldH + float(S(8)),
-                                 L.stLog.w - float(S(36)), float(S(22)));
+            L.stIniLabel = RectF(L.stLog.x + float(S(18)), rowY + fieldH + float(S(10)),
+                                 L.stLog.w - float(S(36)), hintH);
             y = L.stLog.bottom() + float(S(14));
         }
 
@@ -619,6 +663,7 @@ void App::Relayout()
             b.r = L.stBtnReset;
             L.btns.push_back(b);
         }
+        L.pageContentH = L.stResetCard.bottom() + float(S(20));
     }
     else if (m_page == PgAbout)
     {
@@ -649,7 +694,37 @@ void App::Relayout()
             doc.r = L.abBtnDoc;
             L.btns.push_back(doc);
         }
+        // content bottom mirrors the painted footer lines (PaintAbout)
+        float aboutLy = L.abFoot.y + float(S(6)) + float(S(16));
+        for (int i = 0; i < 3; ++i)
+            aboutLy += float(LineH(FSmall)) + float(S(6));
+        L.pageContentH = aboutLy + float(S(8));
     }
+
+    // ----- page scroll geometry ------------------------------------------
+    L.pageMaxScroll = L.pageContentH > L.pageBox.h ? L.pageContentH - L.pageBox.h : 0.0f;
+    if (L.pageMaxScroll <= 0)
+    {
+        m_pageScroll = 0;
+        L.pageTrack = RectF();
+        L.pageThumb = RectF();
+    }
+    else
+    {
+        ClampPageScroll();
+        L.pageTrack = RectF(L.pageBox.right() + float(S(6)), L.pageBox.y, float(S(8)),
+                            L.pageBox.h);
+        float thumbH = L.pageBox.h * L.pageBox.h / L.pageContentH;
+        if (thumbH < float(S(36)))
+            thumbH = float(S(36));
+        const float track = L.pageTrack.h - thumbH;
+        L.pageThumb = RectF(L.pageTrack.x,
+                            L.pageTrack.y + (m_pageScroll / L.pageMaxScroll) * track,
+                            L.pageTrack.w, thumbH);
+    }
+
+    // The EDIT children follow the inject-page fields (with the scroll offset).
+    ApplyEditPlacement();
 }
 
 void App::ApplyEditPlacement()
@@ -657,15 +732,59 @@ void App::ApplyEditPlacement()
     if (!m_editKw || !m_editPort)
         return;
     const bool show = (m_page == PgInject);
-    const int flag = SWP_NOACTIVATE | SWP_NOZORDER;
-    auto place = [&](HWND edit, const RectF& r, bool visible)
+    const Layout& L = m_lay;
+    const DWORD flag = SWP_NOACTIVATE | SWP_NOZORDER;
+    auto hide = [&](HWND edit)
     {
-        SetWindowPos(edit, nullptr, int(r.x), int(r.y), int(r.w), int(r.h),
-                     flag | (visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
-        EnableWindow(edit, show && !m_seq.IsRunning());
+        // A hidden edit must not keep the keyboard focus.
+        if (GetFocus() == edit)
+            SetFocus(m_hwnd);
+        SetWindowPos(edit, nullptr, 0, 0, 0, 0, flag | SWP_HIDEWINDOW);
     };
-    place(m_editKw, m_lay.ijEditKw, show);
-    place(m_editPort, m_lay.ijEditPort, show);
+    auto place = [&](HWND edit, const RectF& r)
+    {
+        if (!show || r.w <= 0)
+        {
+            hide(edit);
+            return;
+        }
+        // The page scrolls as a whole: the child windows follow the offset.
+        RectF v = r;
+        v.y -= m_pageScroll;
+        // Child HWNDs are not clipped by the parent's paint clip, so keep them
+        // only while fully inside the viewport.
+        const bool inside = v.y >= L.pageBox.y - 1 && v.bottom() <= L.pageBox.bottom() + 1;
+        if (!inside)
+        {
+            hide(edit);
+            return;
+        }
+        SetWindowPos(edit, nullptr, int(v.x), int(v.y), int(v.w), int(v.h),
+                     flag | SWP_SHOWWINDOW);
+        EnableWindow(edit, !m_seq.IsRunning());
+    };
+    place(m_editKw, L.ijEditKw);
+    place(m_editPort, L.ijEditPort);
+}
+
+void App::ClampPageScroll()
+{
+    if (m_pageScroll < 0)
+        m_pageScroll = 0;
+    if (m_pageScroll > m_lay.pageMaxScroll)
+        m_pageScroll = m_lay.pageMaxScroll;
+}
+
+POINT App::MapContentPoint(POINT pt) const
+{
+    // Layout coordinates for page controls: the content column is translated
+    // by the scroll offset. The sidebar, titlebar and the scrollbar itself
+    // (outside pageBox / before pageTop) stay untouched.
+    if (m_page == PgLogs || m_lay.pageMaxScroll <= 0 || m_pageScroll <= 0)
+        return pt;
+    if (pt.x >= m_lay.content.x && pt.y >= m_lay.pageBox.y)
+        return POINT{ pt.x, pt.y + int(m_pageScroll + 0.5f) };
+    return pt;
 }
 
 // ------------------------------------------------------------------ events
@@ -717,6 +836,22 @@ void App::OnMouseMove(POINT pt, bool fromNc)
     m_lastMouse = pt;
     const Layout& L = Lay();
 
+    if (m_pageThumbDrag)
+    {
+        if (L.pageMaxScroll > 0 && L.pageThumb.w > 0)
+        {
+            const float track = L.pageTrack.h - L.pageThumb.h;
+            if (track > 0)
+            {
+                const float rel = (float(pt.y) - L.pageTrack.y - m_pageThumbGrab) / track;
+                m_pageScroll = rel * L.pageMaxScroll;
+                ClampPageScroll();
+                ApplyEditPlacement();
+                InvalidateRect(m_hwnd, nullptr, FALSE);
+            }
+        }
+        return;
+    }
     if (m_thumbDragging)
     {
         const float rowH = float(S(24));
@@ -747,6 +882,9 @@ void App::OnMouseMove(POINT pt, bool fromNc)
         InvalidateRect(m_hwnd, nullptr, FALSE);
         return;
     }
+
+    // Hover tracking for page controls uses layout coordinates (scrolled).
+    pt = MapContentPoint(pt);
 
     int hover = 0;
     bool tlAny = false;
@@ -807,7 +945,7 @@ void App::OnMouseMove(POINT pt, bool fromNc)
 void App::OnLButtonDown(POINT pt)
 {
     const Layout& L = Lay();
-    const float px = float(pt.x), py = float(pt.y);
+    float px = float(pt.x), py = float(pt.y);
 
     // traffic lights
     for (int i = 0; i < 3; ++i)
@@ -818,6 +956,31 @@ void App::OnLButtonDown(POINT pt)
             InvalidateRect(m_hwnd, nullptr, FALSE);
             return;
         }
+
+    // page scrollbar (overlay, right of the content column; unscrolled coords)
+    if (m_page != PgLogs && L.pageMaxScroll > 0 && L.pageTrack.contains(px, py))
+    {
+        m_pageThumbGrab = (py >= L.pageThumb.y && py <= L.pageThumb.bottom())
+            ? py - L.pageThumb.y
+            : L.pageThumb.h / 2;
+        m_pageThumbDrag = true;
+        SetCapture(m_hwnd);
+        const float track = L.pageTrack.h - L.pageThumb.h;
+        if (track > 0)
+        {
+            const float rel = (py - L.pageTrack.y - m_pageThumbGrab) / track;
+            m_pageScroll = rel * L.pageMaxScroll;
+            ClampPageScroll();
+            ApplyEditPlacement();
+        }
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+        return;
+    }
+
+    // From here on, hit tests use layout coordinates (page scroll applied).
+    pt = MapContentPoint(pt);
+    px = float(pt.x);
+    py = float(pt.y);
 
     // log interactions (before generic controls; the log card has priority
     // inside its body area because rows/buttons never overlap it)
@@ -911,9 +1074,10 @@ void App::OnLButtonDown(POINT pt)
 
 void App::OnLButtonUp(POINT pt)
 {
-    const bool hadDrag = m_thumbDragging || m_logDragging;
+    const bool hadDrag = m_thumbDragging || m_logDragging || m_pageThumbDrag;
     m_thumbDragging = false;
     m_logDragging = false;
+    m_pageThumbDrag = false;
 
     const int press = m_pressId;
     m_pressId = 0;
@@ -925,6 +1089,7 @@ void App::OnLButtonUp(POINT pt)
         return;
     }
 
+    pt = MapContentPoint(pt);
     const Layout& L = Lay();
     const float px = float(pt.x), py = float(pt.y);
 
@@ -965,15 +1130,30 @@ void App::OnLButtonUp(POINT pt)
 void App::OnMouseWheel(POINT pt, int delta)
 {
     const Layout& L = Lay();
-    if (m_page != PgLogs)
+    if (m_page == PgLogs)
+    {
+        if (!(L.lgCard.contains(float(pt.x), float(pt.y))))
+            return;
+        const float rowH = float(S(24));
+        const float step = rowH * 3 * (delta / float(WHEEL_DELTA));
+        m_logScroll -= step;
+        ClampLogScroll(L);
+        InvalidateRect(m_hwnd, nullptr, FALSE);
         return;
-    if (!(L.lgCard.contains(float(pt.x), float(pt.y))))
-        return;
-    const float rowH = float(S(24));
-    const float step = rowH * 3 * (delta / float(WHEEL_DELTA));
-    m_logScroll -= step;
-    ClampLogScroll(L);
-    InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+
+    // Whole-page scrolling for every other page (content taller than the
+    // viewport), including while an EDIT field holds focus (the subclass
+    // forwards the wheel here).
+    if (L.pageMaxScroll > 0
+        && pt.x >= L.pageBox.x - float(S(16)) && pt.y >= L.pageBox.y - float(S(8)))
+    {
+        const float step = float(S(38)) * 3 * (delta / float(WHEEL_DELTA));
+        m_pageScroll -= step;
+        ClampPageScroll();
+        ApplyEditPlacement();
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
 }
 
 int App::HitTestChrome(POINT pt)
@@ -1074,8 +1254,14 @@ void App::OnEditChanged(int ctrlId)
         const int len = GetWindowTextLengthW(m_editKw);
         std::wstring buf(size_t(len) + 1, L'\0');
         GetWindowTextW(m_editKw, &buf[0], len + 1);
-        m_set.keyword = TrimW(buf).empty() ? AppPaths::DefaultKeyword() : TrimW(buf);
-        m_dirty = true;
+        // Commit only non-empty input: emptying the field to retype must not
+        // snap it back to the default keyword under the cursor.
+        const std::wstring t = TrimW(buf);
+        if (!t.empty())
+        {
+            m_set.keyword = t;
+            m_dirty = true;
+        }
     }
     else if (ctrlId == ID_EDIT_PORT)
     {
@@ -1263,8 +1449,9 @@ void App::SwitchPage(PageId page)
     m_page = page;
     m_hoverId = 0;
     m_pressId = 0;
-    m_layoutDirty = true;
-    ApplyEditPlacement();
+    m_pageScroll = 0;      // fresh page starts at the top
+    m_pageThumbDrag = false;
+    m_layoutDirty = true;  // Relayout re-places the EDIT children
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 

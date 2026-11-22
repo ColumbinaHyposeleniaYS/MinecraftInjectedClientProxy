@@ -90,7 +90,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
         mmi->ptMinTrackSize.x = S(920);
-        mmi->ptMinTrackSize.y = S(640);
+        mmi->ptMinTrackSize.y = S(560); // shorter windows are fine: pages scroll
         return 0;
     }
 
@@ -240,8 +240,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
     const int w = st.hasPlacement ? st.winW : defW;
     const int h = st.hasPlacement ? st.winH : defH;
 
-    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW, x, y, w, h,
-                                nullptr, nullptr, hInstance, nullptr);
+    // macOS chrome only: strip WS_SYSMENU so DWM never draws the native
+    // minimize/maximize/close strip in the top-right corner (it occasionally
+    // reappeared when left in). Shadow, rounded corners and Aero Snap remain
+    // via WS_THICKFRAME; the traffic lights handle close/min/max.
+    // WS_CLIPCHILDREN keeps the parent's repaints from painting over the
+    // borderless EDIT children on the inject page.
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, kAppName,
+                                (WS_OVERLAPPEDWINDOW & ~WS_SYSMENU) | WS_CLIPCHILDREN,
+                                x, y, w, h, nullptr, nullptr, hInstance, nullptr);
     if (!hwnd)
         return 1;
 

@@ -306,21 +306,26 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
         const float labelX = L.ijConfig.x + float(S(18));
         const float labelW = float(S(96));
 
-        auto rowLabel = [&](const RectF& row, const wchar_t* label, const wchar_t* hint = nullptr)
+        auto rowLabel = [&](const RectF& row, const wchar_t* label)
         {
             ui::Text(g, label, FSmall, pal.text2, RectF(labelX, row.y + 4, labelW, row.h - 8));
-            if (hint)
-                ui::Text(g, hint, FSmall, pal.text3,
-                         RectF(row.right() + float(S(10)), row.y + 4, float(S(240)), row.h - 8));
+        };
+        // Hints live under their fields now: full card width, wrapping - the
+        // old right-side hints overflowed the card and hit the window edge.
+        auto rowHint = [&](const RectF& r, const std::wstring& text)
+        {
+            if (r.w > 0)
+                ui::Text(g, text, FSmall, pal.text3, r, ui::Align::Left, true);
         };
 
-        // DLL row (path row + browse)
         rowLabel(L.ijRowDll, L"\u4ee3\u7406 DLL");
-        // keyword + port are drawn around the EDIT children
-        rowLabel(L.ijRowKw, L"\u7a97\u53e3\u5173\u952e\u5b57",
-                 L"\u5339\u914d\u7a97\u53e3\u6807\u9898\u5305\u542b\u6b64\u5173\u952e\u5b57\u7684 Java \u8fdb\u7a0b"); // 匹配窗口标题包含此关键字的 Java 进程
-        rowLabel(L.ijRowPort, L"\u76d1\u542c\u7aef\u53e3",
-                 L"B \u5ba2\u6237\u7aef\u8fde\u63a5\u6b64\u7aef\u53e3"); // B 客户端连接此端口
+        rowLabel(L.ijRowKw, L"\u7a97\u53e3\u5173\u952e\u5b57");
+        rowLabel(L.ijRowPort, L"\u76d1\u542c\u7aef\u53e3");
+        rowHint(L.ijHintDll, app.m_set.dllPath.empty()
+            ? std::wstring(L"\u672a\u9009\u62e9\u65f6\u5c06\u81ea\u52a8\u5728\u7a0b\u5e8f\u76ee\u5f55\u67e5\u627e Aurora.dll") // 未选择时将自动在程序目录查找 Aurora.dll
+            : std::wstring(L"\u5df2\u624b\u52a8\u6307\u5b9a DLL \u8def\u5f84")); // 已手动指定 DLL 路径
+        rowHint(L.ijHintKw, std::wstring(L"\u5339\u914d\u7a97\u53e3\u6807\u9898\u5305\u542b\u6b64\u5173\u952e\u5b57\u7684 Java \u8fdb\u7a0b")); // 匹配窗口标题包含此关键字的 Java 进程
+        rowHint(L.ijHintPort, std::wstring(L"B \u5ba2\u6237\u7aef\u300c\u76f4\u63a5\u8fde\u63a5\u300d\u8bbf\u95ee\u6b64\u7aef\u53e3")); // B 客户端「直接连接」访问此端口
     }
 
     // --- steps card --------------------------------------------------------
@@ -381,7 +386,7 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
                            float(S(18)), float(S(18))), tint, 1.7f);
             ui::Text(g, app.m_bannerText, FBodySem, tint,
                      RectF(L.ijBanner.x + float(S(42)), L.ijBanner.y, L.ijBanner.w - float(S(56)),
-                           L.ijBanner.h));
+                           L.ijBanner.h), ui::Align::Left, true);
         }
     }
 }
@@ -516,7 +521,8 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
         const std::wstring note = L"\u4e91\u6bcd / \u4e9a\u514b\u529b\u4e3a\u7cfb\u7edf\u6750\u8d28\uff08\u9700\u8981 Windows 11 22H2+\uff09\uff1b\u5173\u95ed\u65f6\u4f7f\u7528\u7eaf\u8272\u80cc\u666f"; // 云母 / 亚克力为系统材质…
         ui::Text(g, note, FSmall, pal.text3,
                  RectF(L.stAppearance.x + float(S(18)), L.stAppearance.bottom() - float(S(30)),
-                       L.stAppearance.w - float(S(36)), float(S(28))));
+                       L.stAppearance.w - float(S(36)), float(S(28))),
+                 ui::Align::Left, true);
     }
 
     if (L.stBehavior.w > 0)
@@ -541,12 +547,13 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
     if (L.stLog.w > 0)
     {
         Card(g, L.stLog, L"\u65e5\u5fd7\u6765\u6e90"); // 日志来源
+        // wrapping hint + settings-file line, stacked without overlap
         ui::Text(g, L"\u9ed8\u8ba4\u81ea\u52a8\u63a2\u6d4b %APPDATA%\\.minecraft\\proxy.log\u3001%TEMP%\\MinecraftProxy.log \u7b49\u4f4d\u7f6e\uff1b\u70b9\u51fb\u4e0a\u65b9\u8def\u5f84\u53ef\u624b\u52a8\u6307\u5b9a\u6587\u4ef6", // 默认自动探测…；点击上方路径可手动指定文件
-                 FSmall, pal.text3, RectF(L.stIniLabel.x, L.stIniLabel.y, L.stLog.w - float(S(36)), float(S(30))));
+                 FSmall, pal.text3, L.stIniLabel, ui::Align::Left, true);
         ui::Text(g, L"\u8bbe\u7f6e\u6587\u4ef6\uff1a" + AppPaths::SettingsIni(), // 设置文件：…
                  FSmall, pal.text3,
-                 RectF(L.stIniLabel.x, L.stLog.bottom() - float(S(24)),
-                       L.stLog.w - float(S(36)), float(S(20))));
+                 RectF(L.stIniLabel.x, L.stIniLabel.bottom() + float(S(4)),
+                       L.stLog.w - float(S(36)), float(LineH(FSmall))));
     }
 
     if (L.stResetCard.w > 0)
@@ -689,53 +696,74 @@ void App::OnPaint(HDC dc, const RECT&)
                      RectF(L.content.x, 0, L.content.w, L.titlebar.h), ui::Align::Center);
     }
 
-    // page
-    switch (m_page)
+    // page content: clipped to the content viewport and translated by the
+    // page scroll offset (the logs page never translates; it scrolls inside
+    // its card). Registered controls and the EDIT field frames share the same
+    // transform so hit-testing (layout coords + scroll) stays consistent.
     {
-    case PgOverview: PaintOverview(g, L); break;
-    case PgInject: PaintInject(g, L); break;
-    case PgLogs: PaintLogs(g, L); break;
-    case PgSettings: PaintSettings(g, L); break;
-    case PgAbout: PaintAbout(g, L); break;
-    default: break;
-    }
+        const Gdiplus::GraphicsState pageState = g.Save();
+        Gdiplus::RectF viewport = L.pageBox.gp();
+        viewport.Width += float(S(4)); // let card shadows breathe
+        g.SetClip(viewport);
+        if (m_pageScroll > 0.01f)
+            g.TranslateTransform(0.0f, -m_pageScroll);
 
-    // registered controls live on top of the page bodies
-    for (const BtnDef& b : L.btns)
-        ui::Button(g, b.r, b.label, b.style, HoverOf(*this, b.id), b.enabled, b.danger);
-    for (const RowDef& row : L.rows)
-        ui::PathRow(g, row.r, row.text, row.icon, HoverOf(*this, row.id), row.alert);
-    for (const SegDef& seg : L.segs)
-    {
-        if (seg.id == ID_SEG_LOGFILTER)
-            continue; // painted with the logs page
-        int hoverItem = -1;
-        if (m_hoverId / 100 == seg.id && m_hoverId % 100 >= 1)
-            hoverItem = m_hoverId % 100 - 1;
-        ui::Segmented(g, seg.r, seg.items, seg.sel, hoverItem, nullptr);
-    }
-    for (const TglDef& t : L.tgls)
-    {
-        if (t.id == ID_TGL_FOLLOW && m_page == PgLogs)
-            continue; // painted with the logs page
-        ui::Toggle(g, t.r, t.on, HoverOf(*this, t.id));
-    }
-
-    // EDIT field frames (borderless EDIT children render on top of these)
-    if (m_page == PgInject)
-    {
-        auto fieldFrame = [&](const RectF& r, int ctrlId)
+        switch (m_page)
         {
-            const bool focused = m_editFocused == ctrlId;
-            const bool invalid = ctrlId == ID_EDIT_PORT && m_portInvalid;
-            Gdiplus::Color border = focused ? ApplyAlpha(pal.accent, 0.8f)
+        case PgOverview: PaintOverview(g, L); break;
+        case PgInject: PaintInject(g, L); break;
+        case PgLogs: PaintLogs(g, L); break;
+        case PgSettings: PaintSettings(g, L); break;
+        case PgAbout: PaintAbout(g, L); break;
+        default: break;
+        }
+
+        // registered controls live on top of the page bodies
+        for (const BtnDef& b : L.btns)
+            ui::Button(g, b.r, b.label, b.style, HoverOf(*this, b.id), b.enabled, b.danger);
+        for (const RowDef& row : L.rows)
+            ui::PathRow(g, row.r, row.text, row.icon, HoverOf(*this, row.id), row.alert);
+        for (const SegDef& seg : L.segs)
+        {
+            if (seg.id == ID_SEG_LOGFILTER)
+                continue; // painted with the logs page
+            int hoverItem = -1;
+            if (m_hoverId / 100 == seg.id && m_hoverId % 100 >= 1)
+                hoverItem = m_hoverId % 100 - 1;
+            ui::Segmented(g, seg.r, seg.items, seg.sel, hoverItem, nullptr);
+        }
+        for (const TglDef& t : L.tgls)
+        {
+            if (t.id == ID_TGL_FOLLOW && m_page == PgLogs)
+                continue; // painted with the logs page
+            ui::Toggle(g, t.r, t.on, HoverOf(*this, t.id));
+        }
+
+        // EDIT field frames (borderless EDIT children render on top of these)
+        if (m_page == PgInject)
+        {
+            auto fieldFrame = [&](const RectF& r, int ctrlId)
+            {
+                const bool focused = m_editFocused == ctrlId;
+                const bool invalid = ctrlId == ID_EDIT_PORT && m_portInvalid;
+                Gdiplus::Color border = focused ? ApplyAlpha(pal.accent, 0.8f)
                                    : invalid ? pal.danger : pal.fieldBorder;
-            const Gdiplus::Color fill = m_backdropActive
-                ? ApplyAlpha(pal.cardBg, pal.micaCardAlpha) : pal.cardBg;
-            ui::RoundRect(g, r, 8.0f, &fill, &border, focused ? 1.4f : 1.0f);
-        };
-        fieldFrame(L.ijEditKw, ID_EDIT_KEYWORD);
-        fieldFrame(L.ijEditPort, ID_EDIT_PORT);
+                const Gdiplus::Color fill = m_backdropActive
+                    ? ApplyAlpha(pal.cardBg, pal.micaCardAlpha) : pal.cardBg;
+                ui::RoundRect(g, r, 8.0f, &fill, &border, focused ? 1.4f : 1.0f);
+            };
+            fieldFrame(L.ijEditKw, ID_EDIT_KEYWORD);
+            fieldFrame(L.ijEditPort, ID_EDIT_PORT);
+        }
+
+        g.Restore(pageState);
+    }
+
+    // overlay page scrollbar (unscrolled, right of the content column)
+    if (L.pageMaxScroll > 0 && L.pageThumb.w > 0)
+    {
+        const Gdiplus::Color thumb = m_pageThumbDrag ? pal.text3 : pal.separator;
+        ui::RoundRect(g, L.pageThumb, 4.0f, &thumb, nullptr, 0);
     }
 
     // toast

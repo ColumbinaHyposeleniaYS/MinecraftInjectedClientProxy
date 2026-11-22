@@ -114,8 +114,12 @@ struct Layout
     RectF nav[PgCount];
 
     // shared page metrics
-    RectF pageBox;    // content column (centered, max width)
+    RectF pageBox;    // content column (centered, max width) - also the scroll viewport
     float pageTop = 0;
+    float pageContentH = 0;   // full content height (layout coords)
+    float pageMaxScroll = 0;  // max(0, pageContentH - pageBox.h); 0 on the logs page
+    RectF pageTrack;          // overlay scrollbar track, right of the column
+    RectF pageThumb;          // current thumb pill (valid when pageMaxScroll > 0)
 
     // overview
     RectF ovWarn, ovStatus, ovInfo, ovHint;
@@ -124,6 +128,7 @@ struct Layout
     // inject
     RectF ijConfig, ijSteps;
     RectF ijRowDll, ijRowKw, ijRowPort, ijEditKw, ijEditPort, ijBrowse;
+    RectF ijHintDll, ijHintKw, ijHintPort; // hint lines under each field
     RectF ijStepBullets[4], ijStepTexts[4];
     RectF ijBanner, ijBar;
     RectF ijBtnGo, ijBtnRecheck, ijBtnCancel;
@@ -190,6 +195,8 @@ public:
 private:
     void Relayout();
     void ApplyEditPlacement();
+    void ClampPageScroll();
+    POINT MapContentPoint(POINT pt) const; // layout coords for page controls
     void ApplyThemeInternal();
     void ApplyBackdrop();
     void SyncEditsFromSettings();
@@ -252,6 +259,11 @@ public:
     bool m_logDragging = false;
     bool m_thumbDragging = false;
     float m_thumbGrab = 0;
+
+    // page scroll (every page except logs, which scrolls internally)
+    float m_pageScroll = 0;
+    bool m_pageThumbDrag = false;
+    float m_pageThumbGrab = 0;
 
     // toast
     std::wstring m_toastText;

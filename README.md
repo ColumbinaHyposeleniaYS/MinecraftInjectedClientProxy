@@ -24,7 +24,8 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 
 ## 界面与工程
 
-- macOS 风格：无边框自绘窗口、红黄绿窗口控制、毛玻璃侧边栏、胶囊选中态、分段控件、圆角卡片、Toast 浮窗
+- macOS 风格：无边框自绘窗口、红黄绿窗口控制（已去除 Windows 原生标题按钮）、毛玻璃侧边栏、胶囊选中态、分段控件、圆角卡片、Toast 浮窗
+- 页面内容超出窗口高度时自动出现滚动条（滚轮 / 拖动滑块均可）；输入框为原生 EDIT 控件，支持中文输入法、复制粘贴与全选
 - DWM 集成：Win11 圆角 + 沉浸式深色 + 系统材质（Mica / Acrylic，通过 32bpp ARGB 双缓冲与 `DwmExtendFrameIntoClientArea` 实现，Win10 自动回退）
 - Per-Monitor V2 高 DPI、跟随系统的深浅色切换（`WM_SETTINGCHANGE`）
 - 注入引擎移植自上游 Compass（反射式注入，`src/core/injectcore/`），支持驻留代理恢复信号
