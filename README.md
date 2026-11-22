@@ -1,8 +1,8 @@
 # Minecraft Injected Client Proxy
 
-Minecraft 1.20.1 客户端反向代理的桌面管理工具（Aurora.dll 的注入器 / 控制台），**macOS 风格图形界面**。
+Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图形界面**（注入器 / 控制台）+ **Aurora.dll 代理核心**（源码随仓库分发，Release 开箱即用）。
 
-**原生 Win32 + GDI+ 实现，无任何运行时依赖** —— 不需要 Qt、.NET 或 VC++ 运行库，构建产物为单个 exe（约数百 KB），冷启动即时。
+**GUI 为原生 Win32 + GDI+ 实现，无任何运行时依赖** —— 不需要 Qt、.NET 或 VC++ 运行库；exe 与 DLL 均静态链接 CRT，解压即用。
 
 ## 它做什么
 
@@ -30,6 +30,18 @@ Minecraft 1.20.1 客户端反向代理的桌面管理工具（Aurora.dll 的注�
 - 注入引擎移植自上游 Compass（反射式注入，`src/core/injectcore/`），支持驻留代理恢复信号
 - 端口探测基于 `GetExtendedTcpTable`（不建套接字），可判断"目标 PID 是否已监听端口"与 B 端连接数
 
+## 目录结构
+
+| 路径 | 内容 |
+| --- | --- |
+| `src/app` | GUI（窗口、绘制、主题、页面） |
+| `src/core` | 注入引擎、窗口定位、端口探测、日志尾随、设置持久化 |
+| `src/core/injectcore` | 反射式注入实现（与代理核心共享的恢复信号契约也在这里） |
+| `proxy/` | **Aurora.dll 代理核心源码**（注入到 A 客户端的驻留代理本体） |
+| `resources/` | 图标、清单 |
+
+`proxy/sources.txt` 是代理 DLL 的唯一源码清单，新增源文件需在其中登记。
+
 ## 从源码构建
 
 要求：Windows + Visual Studio 2022（或仅 Build Tools）+ CMake 3.21+，x64。
@@ -38,25 +50,27 @@ Minecraft 1.20.1 客户端反向代理的桌面管理工具（Aurora.dll 的注�
 cmake -S . -B build
 cmake --build build --config Release --parallel
 # 产物：build\bin\Release\MinecraftInjectedClientProxy.exe
+#      build\bin\Release\Aurora.dll（代理核心，MSVC 工具链时自动构建）
 ```
 
-也可在 MinGW-w64 工具链下构建（CMake 会自动识别）。
+GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成 exe）。
 
 ## 使用方法
 
-1. 取得 `Aurora.dll`（代理核心，**不随 Release 附带**，见下节）
-2. 将 DLL 与本程序放在同一目录（或在「注入」页手动选择文件）
-3. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
-4. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
-5. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
+1. 下载 Release 压缩包并解压到任意目录（包内已含 `Aurora.dll`，无需额外获取）
+2. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
+3. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
+4. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
 
-注入成功后，程序会持续监视代理状态（进程存活 / 端口监听 / B 连接数）。
+注入成功后，程序会持续监视代理状态（进程存活 / 端口监听 / B 连接数）。游戏内按 DEL 可随时停用代理，再次注入即可恢复。
 
-## 关于 Aurora.dll 的分发
+## Aurora.dll（代理核心）
 
-本仓库只包含**图形界面与注入逻辑**；代理核心 `Aurora.dll` 的源码不在本仓库中，因此 Release 默认只附带 GUI。
+代理核心源码位于 `proxy/`，随仓库一起构建，Release 自动打包，无需另外获取。
 
-如果希望随包分发，把 `Aurora.dll` 提交到**仓库根目录**即可 —— CI 会检测到它并自动打进发布包（见 `.github/workflows/ci.yml` / `release.yml` 的打包步骤）。未检测到时发布说明会提示用户自行放置。
+- 仅供注入到 Minecraft 1.20.1 客户端（x64 Java 进程），反射式加载、驻留游戏进程
+- 恢复信号契约：DLL 在目标进程内创建 `MinecraftInjectedClientProxy.Resume.v1.<pid>` 命名事件；GUI 侧同时兼容旧版 `SakuraTools` 前缀
+- 如需替换为自编译版本：把构建好的 `Aurora.dll` 放到仓库根目录，CI 打包时会优先采用根目录副本
 
 ## 持久化
 

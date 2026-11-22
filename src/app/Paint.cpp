@@ -610,7 +610,7 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
     };
     const AboutLine lines[] = {
         { L"\u539f\u751f Win32 / GDI+ \u00b7 \u65e0\u4efb\u4f55\u8fd0\u884c\u65f6\u4f9d\u8d56 \u00b7 \u5355\u6587\u4ef6 exe", false }, // 原生 Win32 / GDI+ · 无任何运行时依赖 · 单文件 exe
-        { L"\u4ee3\u7406\u6838\u5fc3 Aurora.dll \u7531\u4e0a\u6e38\u63d0\u4f9b\uff0c\u8bf7\u7f6e\u4e8e\u672c\u7a0b\u5e8f\u540c\u76ee\u5f55", false }, // 代理核心 Aurora.dll 由上游提供，请置于本程序同目录
+        { L"\u4ee3\u7406\u6838\u5fc3 Aurora.dll \u968f Release \u9644\u5e26\uff0c\u4e0e\u672c\u7a0b\u5e8f\u540c\u76ee\u5f55\u5373\u53ef\u4f7f\u7528", false }, // 代理核心 Aurora.dll 随 Release 附带，与本程序同目录即可使用
         { L"\u4ec5\u4f9b\u5b66\u4e60\u4ea4\u6d41\u4f7f\u7528\uff0c\u8bf7\u9075\u5b88 Minecraft EULA \u4e0e\u76ee\u6807\u670d\u52a1\u5668\u89c4\u5219", true }, // 仅供学习交流使用，请遵守…
     };
     float ly = fy + float(S(16));

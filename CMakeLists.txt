@@ -20,6 +20,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Static CRT (/MT) for every MSVC target:
+#   - the proxy DLL is injected into a JVM process that carries no VC runtime;
+#   - the GUI then ships as a fully self-contained exe (no VC++ Redist needed).
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Version shown in the UI ("关于" page / sidebar footer). Release builds
 # override it with the git tag version via -DMICP_APP_VERSION=x.y.z.
 if(NOT MICP_APP_VERSION)
@@ -69,6 +76,44 @@ if(MSVC)
     # The manifest is embedded from resources/appicon.rc; disable the linker's
     # auto-generated one (CVT1100: duplicate resource MANIFEST).
     target_link_options(micp PRIVATE /MANIFEST:NO)
+endif()
+
+# ---------------------------------------------------------------------------
+# Aurora.dll - the resident proxy core injected into client A.
+#
+# Ported from the upstream NativeBox project (its native/ tree lives here as
+# proxy/). proxy/sources.txt is the single source list for the production DLL;
+# new files must be registered there (editing it re-runs CMake automatically).
+#
+# MSVC x64 only: the reflective loader and the JVM bridge are MSVC code paths.
+# MinGW builds compile the GUI alone and skip the DLL with a notice below.
+# ---------------------------------------------------------------------------
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS proxy/sources.txt)
+
+if(MSVC)
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/proxy/sources.txt" AURORA_SOURCES)
+
+    add_library(aurora SHARED ${AURORA_SOURCES})
+    target_include_directories(aurora PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/proxy
+        ${CMAKE_CURRENT_SOURCE_DIR}/proxy/include
+        # RuntimeControl.h / LoadLibraryR.h: the resume-event naming contract
+        # and the reflective loader are shared with the GUI injector core.
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/injectcore)
+    target_compile_definitions(aurora PRIVATE
+        REFLECTIVEDLLINJECTION_CUSTOM_DLLMAIN WIN_X64 NOMINMAX _CRT_SECURE_NO_WARNINGS)
+    # Build the DLL exactly like upstream NativeBox: permissive (not
+    # /permissive-) and EHsc; /O2 mirrors its Release settings.
+    target_compile_options(aurora PRIVATE
+        /permissive
+        $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+        $<$<CONFIG:Release>:/O2>)
+    target_link_libraries(aurora PRIVATE psapi ws2_32 kernel32 user32 advapi32)
+    set_target_properties(aurora PROPERTIES
+        OUTPUT_NAME Aurora
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+else()
+    message(STATUS "Aurora.dll (proxy core) needs the MSVC toolchain - building the GUI only.")
 endif()
 
 # Convenience target: run the freshly built exe.

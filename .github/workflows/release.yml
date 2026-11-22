@@ -66,13 +66,23 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
+          # Proxy core: a repository-root Aurora.dll overrides the built one
+          # (drop in a custom build to ship it instead); otherwise the DLL
+          # just built from proxy/ is bundled. CI is MSVC, so it must exist.
           $bundledDll = $false
+          $dll = $null
           if (Test-Path "Aurora.dll" -PathType Leaf) {
-            Copy-Item "Aurora.dll" -Destination $bundle
+            $dll = "Aurora.dll"
+            Write-Host "Bundling Aurora.dll override from the repository root."
+          } elseif (Test-Path "build\bin\Release\Aurora.dll" -PathType Leaf) {
+            $dll = "build\bin\Release\Aurora.dll"
+            Write-Host "Bundling Aurora.dll built from proxy/ sources."
+          }
+          if ($dll) {
+            Copy-Item $dll -Destination $bundle
             $bundledDll = $true
-            Write-Host "Bundled Aurora.dll from the repository root."
           } else {
-            Write-Host "No Aurora.dll in the repository root - shipping the GUI only."
+            Write-Warning "Aurora.dll not found - shipping the GUI only."
           }
           "bundledDll=$($bundledDll ? 'true' : 'false')" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -102,9 +112,9 @@ jobs:
           $changelog = (@($commits) | Select-Object -First 40) -join "`n"
           if (-not $changelog) { $changelog = '- 初始发布' }
           $dllNote = if ('${{ env.bundledDll }}' -eq 'true') {
-            '- `Aurora.dll`（代理核心）已随包附带，与程序放在同一目录即可使用'
+            '- `Aurora.dll`（代理核心）已随包附带，与程序同目录即可直接注入'
           } else {
-            '- 代理 DLL（`Aurora.dll`）不随包分发：请将其放置到本程序同目录（或在「注入」页手动选择）。若希望随包分发，可将 `Aurora.dll` 提交到仓库根目录，CI 之后会自动打包'
+            '- ⚠️ 本次发布未包含 `Aurora.dll`（代理核心）：请自行从源码构建，或在「注入」页手动选择 DLL 路径'
           }
           # NOTE: the here-string body below sits at the script's column 0 after
           # YAML strips the common indentation - required by PowerShell syntax.
@@ -113,7 +123,7 @@ jobs:
 
           | 文件 | 说明 |
           | --- | --- |
-          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（单文件 exe，无任何运行时依赖） |
+          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（GUI 单 exe + `Aurora.dll` 代理核心，无任何运行时依赖） |
           | `checksums.sha256` | SHA-256 校验和 |
 
           ## 更新内容 __TAG__
@@ -135,7 +145,7 @@ jobs:
 
           完整说明见压缩包内的 `README.md`。仅供学习交流使用，请遵守所玩服务器的规则。
 
-          > 构建信息：`__TAG__` @ `__SHA__` · MSVC x64 · 纯 Win32 / GDI+
+          > 构建信息：`__TAG__` @ `__SHA__` · MSVC x64 · Win32/GDI+ GUI + Aurora 代理核心
           '@
           $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__CHANGELOG__', $changelog).Replace('__DLLNOTE__', $dllNote)
           $notes | Out-File -FilePath release-notes.md -Encoding utf8

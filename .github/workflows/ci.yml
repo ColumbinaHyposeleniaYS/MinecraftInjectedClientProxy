@@ -52,12 +52,22 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
-          # If the repository ships a prebuilt proxy DLL, bundle it too.
+          # Proxy core: a repository-root Aurora.dll overrides the built one
+          # (drop in a custom build to ship it instead); otherwise the DLL
+          # just built from proxy/ is bundled. CI is MSVC, so it must exist.
+          $dll = $null
           if (Test-Path "Aurora.dll" -PathType Leaf) {
-            Copy-Item "Aurora.dll" -Destination $bundle
-            Write-Host "Bundled Aurora.dll from the repository root."
+            $dll = "Aurora.dll"
+            Write-Host "Bundling Aurora.dll override from the repository root."
+          } elseif (Test-Path "build\bin\Release\Aurora.dll" -PathType Leaf) {
+            $dll = "build\bin\Release\Aurora.dll"
+            Write-Host "Bundling Aurora.dll built from proxy/ sources."
+          }
+          if ($dll) {
+            Copy-Item $dll -Destination $bundle
           } else {
-            Write-Host "No Aurora.dll in the repository root - release ships the GUI only."
+            Write-Error "Aurora.dll not found: the aurora target did not build (MSVC required)."
+            exit 1
           }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path $bundle -DestinationPath "dist\$app-win64-r$($env:GITHUB_RUN_NUMBER).zip" -Force
