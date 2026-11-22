@@ -2,6 +2,7 @@
 #include "app/Lang.h"
 
 #include "core/AppPaths.h"
+#include "core/EmbeddedDll.h"
 
 // AlphaBlend for the page-transition crossfade: declared in wingdi.h (pulled
 // in through the windows.h chain); msimg32.lib provides the import.
@@ -134,10 +135,10 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
         Card(g, L.ovWarn);
         ui::Icon(g, IconKind::Warn, RectF(L.ovWarn.x + float(S(18)), L.ovWarn.y + float(S(26)),
                                           float(S(22)), float(S(22))), pal.warning, 1.6f);
-        ui::Text(g, lang::Tr(lang::Str::OvDllMissing), FBodySem, pal.danger, // 未找到 Aurora.dll
+        ui::Text(g, lang::Tr(lang::Str::OvDllMissing), FBodySem, pal.danger,
                  RectF(L.ovWarn.x + float(S(52)), L.ovWarn.y + float(S(20)),
                        L.ovWarn.w - float(S(52)) - float(S(140)), float(LineH(FBodySem))));
-        ui::Text(g, lang::Tr(lang::Str::OvDllMissingHint), // 请将代理 DLL 放到程序同目录，或到「注入」页选择文件
+        ui::Text(g, lang::Tr(lang::Str::OvDllMissingHint),
                  FSmall, pal.text2,
                  RectF(L.ovWarn.x + float(S(52)), L.ovWarn.y + float(S(24)) + float(LineH(FBodySem)),
                        L.ovWarn.w - float(S(52)) - float(S(140)), float(LineH(FSmall))));
@@ -246,7 +247,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
             const wchar_t* stateText;
         };
         Row rows[4] = {};
-        rows[0] = { lang::Tr(lang::Str::OvProxyDll), FileNameOf(app.ResolvedDllPath()), app.m_dllFound, true,
+        rows[0] = { lang::Tr(lang::Str::OvProxyDll), std::wstring(L"Aurora.dll"), app.m_dllFound, true,
                     app.m_dllFound ? pal.success : pal.danger,
                     app.m_dllFound ? lang::Tr(lang::Str::OvStateFound) : lang::Tr(lang::Str::OvStateNotFound) };
         rows[1] = { lang::Tr(lang::Str::OvKeywordLabel), app.m_set.keyword, false, false, pal.text, L"" };
@@ -339,12 +340,8 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
                 ui::Text(g, text, FSmall, pal.text3, r, ui::Align::Left, true);
         };
 
-        rowLabel(L.ijRowDll, lang::Tr(lang::Str::OvProxyDll));
         rowLabel(L.ijRowKw, lang::Tr(lang::Str::OvKeywordLabel));
         rowLabel(L.ijRowPort, lang::Tr(lang::Str::OvPortLabel));
-        rowHint(L.ijHintDll, app.m_set.dllPath.empty()
-            ? std::wstring(lang::Tr(lang::Str::IjDllHintAuto)) // 未选择时将自动在程序目录查找 Aurora.dll
-            : std::wstring(lang::Tr(lang::Str::IjDllHintManual))); // 已手动指定 DLL 路径
         rowHint(L.ijHintKw, std::wstring(lang::Tr(lang::Str::IjKwHint))); // 匹配窗口标题包含此关键字的 Java 进程
         rowHint(L.ijHintPort, std::wstring(lang::Tr(lang::Str::IjPortHint))); // B 客户端「直接连接」访问此端口
     }

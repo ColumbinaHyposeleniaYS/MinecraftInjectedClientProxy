@@ -18,7 +18,6 @@ struct SettingsData
     // (falling back to zh_CN) and persist from then on.
     int lang = -1;
 
-    std::wstring dllPath;   // user-chosen override; empty -> auto-detect
     std::wstring keyword;   // window title keyword (default 布吉岛)
     int port = 25565;
 

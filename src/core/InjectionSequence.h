@@ -18,7 +18,6 @@ public:
 
     struct Config
     {
-        std::wstring dllPath;
         std::wstring keyword;
         uint16_t port = 25565;
     };

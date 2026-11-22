@@ -47,18 +47,6 @@ std::vector<std::wstring> LogCandidates()
     return out;
 }
 
-std::vector<std::wstring> DefaultDllCandidates()
-{
-    const std::wstring dir = AppDir();
-    return {
-        dir + L"\\Aurora.dll",
-        dir + L"\\dll\\Aurora.dll",
-        dir + L"\\build\\Aurora.dll",
-        dir + L"\\..\\build\\Aurora.dll",
-        L"Aurora.dll",
-    };
-}
-
 std::vector<std::wstring> LanIpAddresses()
 {
     std::vector<std::wstring> out;

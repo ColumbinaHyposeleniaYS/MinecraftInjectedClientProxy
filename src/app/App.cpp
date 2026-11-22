@@ -202,7 +202,7 @@ void App::Init(HWND hwnd)
         SetWindowLongPtrW(m_editPort, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&EditHookProc));
     }
 
-    m_dllFound = Injector::FileReadable(ResolvedDllPath());
+    m_dllFound = EmbeddedDll::Available();
     m_mon.Configure(m_set.keyword, uint16_t(m_set.port));
 
     SetTimer(hwnd, 1, 15, nullptr);    // fast: animation clock / spinner
@@ -488,35 +488,14 @@ void App::Relayout()
         // overflowing the card like the old right-side hints did).
         const float rowPitch = float(S(58));
 
-        const float cfgH = float(S(24)) + LineH(FHead) + float(S(14)) + 3 * rowPitch
+        const float cfgH = float(S(24)) + LineH(FHead) + float(S(14)) + 2 * rowPitch
                             + float(S(6));
         L.ijConfig = RectF(L.pageBox.x, y, L.pageBox.w, cfgH);
 
         float rowY = L.ijConfig.y + float(S(24)) + LineH(FHead) + float(S(14));
-        const float fieldW = L.ijConfig.w - cardPad * 2 - labelW - float(S(88));
+        const float fieldW = L.ijConfig.w - cardPad * 2 - labelW;
         const float hintW = L.ijConfig.w - cardPad - (cardPad + labelW);
         const float hintY = fieldH + float(S(3));
-
-        // DLL row
-        L.ijRowDll = RectF(L.ijConfig.x + cardPad + labelW, rowY, fieldW, fieldH);
-        L.ijHintDll = RectF(L.ijRowDll.x, rowY + hintY, hintW, float(LineH(FSmall)));
-        {
-            RowDef row;
-            row.id = ID_ROW_DLL;
-            row.r = L.ijRowDll;
-            row.text = ResolvedDllPath();
-            row.icon = IconKind::Doc;
-            row.alert = !m_dllFound;
-            L.rows.push_back(row);
-            L.ijBrowse = RectF(L.ijRowDll.right() + float(S(8)), rowY, float(S(80)), fieldH);
-            BtnDef b;
-            b.id = ID_BTN_BROWSE_DLL;
-            b.label = lang::Tr(lang::Str::Browse); // 浏览…
-            b.style = 1;
-            b.r = L.ijBrowse;
-            L.btns.push_back(b);
-        }
-        rowY += rowPitch;
 
         // keyword row
         L.ijRowKw = RectF(L.ijConfig.x + cardPad + labelW, rowY, fieldW, fieldH);
@@ -1539,7 +1518,7 @@ void App::OnTimer(int id)
     {
         m_mon.Configure(m_set.keyword, uint16_t(m_set.port));
         m_snap = m_mon.Tick();
-        const bool dllFound = Injector::FileReadable(ResolvedDllPath());
+        const bool dllFound = EmbeddedDll::Available();
         if (dllFound != m_dllFound)
         {
             m_dllFound = dllFound;
@@ -1753,15 +1732,9 @@ void App::OnEditFocus(int ctrlId, bool focused)
 
 std::wstring App::ResolvedDllPath() const
 {
-    // An explicitly configured path wins even if it does not exist yet (the
-    // inject sequence reports it); otherwise use the first readable external
-    // candidate. An empty result means "use the embedded Aurora.dll".
-    if (!m_set.dllPath.empty())
-        return m_set.dllPath;
-    for (const auto& c : AppPaths::DefaultDllCandidates())
-        if (Injector::FileReadable(c))
-            return c;
-    return {};
+    // The proxy core lives inside this executable. Extract it on demand;
+    // an empty result means this build carries no embedded Aurora.dll.
+    return EmbeddedDll::ExtractToTemp();
 }
 
 void App::StartInject()
@@ -1769,7 +1742,6 @@ void App::StartInject()
     if (m_seq.IsRunning())
         return;
 
-    const std::wstring dll = ResolvedDllPath();
     for (int i = 0; i < 4; ++i)
     {
         m_stepState[i] = 0;
@@ -1778,16 +1750,13 @@ void App::StartInject()
     m_bannerKind = 0;
     m_bannerText.clear();
 
-    // The Aurora.dll core is embedded in this executable; an external file
-    // (settings or next to the exe) only overrides it. A missing external DLL
-    // is therefore not fatal - InjectionSequence extracts the embedded copy.
-    if (!dll.empty() && !Injector::FileReadable(dll) &&
-        !EmbeddedDll::Available())
+    // The Aurora.dll core is embedded in this executable. Without it there is
+    // nothing to inject - refuse early with a clear message.
+    if (!EmbeddedDll::Available())
     {
         m_stepState[0] = 3;
-        m_stepDetail[0] = dll;
         m_bannerKind = 2;
-        m_bannerText = lang::Tr(lang::Str::TsDllMissingLong); // 未找到代理 DLL
+        m_bannerText = lang::Tr(lang::Str::TsDllMissingLong);
         SwitchPage(PgInject);
         ShowToast(lang::Tr(lang::Str::OvDllMissing), 3);
         m_layoutDirty = true;
@@ -1795,10 +1764,9 @@ void App::StartInject()
     }
 
     m_stepState[0] = 2;
-    m_stepDetail[0] = dll;
+    m_stepDetail[0] = lang::Tr(lang::Str::OvProxyDll);
 
     InjectionSequence::Config cfg;
-    cfg.dllPath = dll;
     cfg.keyword = m_set.keyword;
     cfg.port = uint16_t(m_set.port);
     if (m_seq.Start(m_hwnd, cfg))
@@ -1813,7 +1781,7 @@ void App::StartInject()
 void App::RecheckTargets()
 {
     const ProxyTarget t = ProcessFinder::NewestMatch(m_set.keyword);
-    m_dllFound = Injector::FileReadable(ResolvedDllPath());
+    m_dllFound = EmbeddedDll::Available();
 
     if (t.valid())
     {
@@ -1987,10 +1955,6 @@ void App::OnCommand(int id)
         m_seq.Cancel();
         ShowToast(lang::Tr(lang::Str::TsCancelling), 0);
     }
-    else if (id == ID_BTN_BROWSE_DLL || id == ID_ROW_DLL)
-    {
-        BrowseDll();
-    }
     else if (id == ID_BTN_RECHECK)
     {
         RecheckTargets();
@@ -2038,7 +2002,7 @@ void App::OnCommand(int id)
         fresh.winW = old.winW; fresh.winH = old.winH;
         fresh.maximized = old.maximized;
         m_set = fresh;
-        m_dllFound = Injector::FileReadable(ResolvedDllPath());
+        m_dllFound = EmbeddedDll::Available();
         ApplyThemeInternal();
         ApplyBackdrop();
         SyncEditsFromSettings();
@@ -2074,29 +2038,6 @@ void App::OnCommand(int id)
             PostMessageW(m_hwnd, WM_CLOSE, 0, 0); // orderly exit (saves settings)
         else
             ShowToast(lang::Tr(lang::Str::TsAdminCancelled), 2); // 已取消管理员重启
-    }
-}
-
-void App::BrowseDll()
-{
-    wchar_t file[MAX_PATH * 2] = {};
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = m_hwnd;
-    ofn.lpstrFilter = lang::Tr(lang::Str::DlgDllFilter); // 代理 DLL / 所有文件
-    ofn.lpstrFile = file;
-    ofn.nMaxFile = MICP_ARRLEN(file);
-    ofn.lpstrTitle = lang::Tr(lang::Str::DlgDllTitle);
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
-    const std::wstring startDir = AppPaths::AppDir();
-    ofn.lpstrInitialDir = startDir.c_str();
-    if (GetOpenFileNameW(&ofn))
-    {
-        m_set.dllPath = file;
-        m_dllFound = Injector::FileReadable(m_set.dllPath);
-        m_dirty = true;
-        m_layoutDirty = true;
-        ShowToast(lang::Tr(lang::Str::TsDllChosen), 1);
     }
 }
 

@@ -37,7 +37,6 @@ enum {
 
     ID_BTN_INJECT = 20,
     ID_BTN_CANCEL_INJ = 21,
-    ID_BTN_BROWSE_DLL = 22,
     ID_BTN_RECHECK = 23,
     ID_BTN_OPEN_LOGDIR = 24,
     ID_BTN_OPEN_LOGFILE = 25,
@@ -57,7 +56,6 @@ enum {
     ID_SEG_BACKDROP = 51,
     ID_SEG_LOGFILTER = 52,
 
-    ID_ROW_DLL = 60,
     ID_ROW_LOG = 61,
 
     ID_LANG_ROW = 70,   // settings: language field (opens the picker)
@@ -136,8 +134,8 @@ struct Layout
 
     // inject
     RectF ijConfig, ijSteps;
-    RectF ijRowDll, ijRowKw, ijRowPort, ijEditKw, ijEditPort, ijBrowse;
-    RectF ijHintDll, ijHintKw, ijHintPort; // hint lines under each field
+    RectF ijRowKw, ijRowPort, ijEditKw, ijEditPort;
+    RectF ijHintKw, ijHintPort; // hint lines under each field
     RectF ijStepBullets[4], ijStepTexts[4];
     RectF ijBanner, ijBar;
     RectF ijBtnGo, ijBtnRecheck, ijBtnCancel;
@@ -245,7 +243,6 @@ public:
 private:
     void SegChanged(int segId, int item);
     void ToggleSetting(int id);
-    void BrowseDll();
     void BrowseLog();
     void ClampLogScroll(const Layout& L);
     int DetectLevel(const std::wstring& line);

@@ -66,23 +66,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
-          # Proxy core: a repository-root Aurora.dll overrides the built one
-          # (drop in a custom build to ship it instead); otherwise the DLL
-          # just built from proxy/ is bundled. CI is MSVC, so it must exist.
+          # The proxy core is embedded in the GUI at build time; the DLL is
+          # still shipped alongside. CI is MSVC, so it must exist.
           $bundledDll = $false
-          $dll = $null
-          if (Test-Path "Aurora.dll" -PathType Leaf) {
-            $dll = "Aurora.dll"
-            Write-Host "Bundling Aurora.dll override from the repository root."
-          } elseif (Test-Path "build\bin\Release\Aurora.dll" -PathType Leaf) {
-            $dll = "build\bin\Release\Aurora.dll"
-            Write-Host "Bundling Aurora.dll built from proxy/ sources."
-          }
-          if ($dll) {
+          $dll = "build\bin\Release\Aurora.dll"
+          if (Test-Path $dll -PathType Leaf) {
             Copy-Item $dll -Destination $bundle
             $bundledDll = $true
           } else {
-            Write-Warning "Aurora.dll not found - shipping the GUI only."
+            Write-Warning "Aurora.dll not found - check the aurora target build."
           }
           "bundledDll=$($bundledDll ? 'true' : 'false')" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -112,9 +104,9 @@ jobs:
           $changelog = (@($commits) | Select-Object -First 40) -join "`n"
           if (-not $changelog) { $changelog = '- 初始发布' }
           $dllNote = if ('${{ env.bundledDll }}' -eq 'true') {
-            '- `Aurora.dll`（代理核心）已随包附带，与程序同目录即可直接注入（程序本身也已内置代理核心）'
+            '- `Aurora.dll`（代理核心）已随包附带；代理核心也已内置在程序中，注入时自动使用'
           } else {
-            '- ℹ️ 代理核心 `Aurora.dll` 已内置在程序中，注入时自动使用；如需外部 DLL 请自行构建并放到程序同目录'
+            '- ⚠️ 本次构建未生成 `Aurora.dll`；程序内置的代理核心不受影响，注入时自动使用'
           }
           # NOTE: the here-string body below sits at the script's column 0 after
           # YAML strips the common indentation - required by PowerShell syntax.

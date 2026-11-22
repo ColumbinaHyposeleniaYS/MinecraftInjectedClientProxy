@@ -15,7 +15,7 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 | 页面 | 内容 |
 | --- | --- |
 | 总览 | 代理运行状态、B 客户端连接数、一键注入、当前配置摘要、局域网连接提示 |
-| 注入 | DLL 路径 / 窗口关键字 / 端口，分步进度（检查 DLL → 定位窗口 → 注入 → 等待监听）与结果横幅 |
+| 注入 | 窗口关键字 / 端口，分步进度（校验内置代理 → 定位窗口 → 注入 → 等待监听）与结果横幅 |
 | 日志 | 实时尾随 `proxy.log`（自动探测常见位置）、级别着色与过滤、自动滚动、跳转系统记事本 |
 | 设置 | 主题（跟随系统 / 浅色 / 深色）、窗口材质（云母 / 亚克力，实验性）、注入与日志行为、恢复默认 |
 | 关于 | 版本、仓库链接、以管理员身份重启 |
@@ -45,7 +45,7 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 
 `proxy/sources.txt` 是代理 DLL 的唯一源码清单，新增源文件需在其中登记。
 
-MSVC 构建时 `Aurora.dll` 会作为 RCDATA 资源嵌入 GUI 程序：注入时若程序目录与设置中都没有外部 DLL，会自动提取内置副本使用；外部 DLL 仍可随时覆盖内置版本。
+MSVC 构建时 `Aurora.dll` 会作为 RCDATA 资源嵌入 GUI 程序：注入时自动提取内置副本使用，无需单独携带 DLL。
 
 ## 从源码构建
 
@@ -55,7 +55,7 @@ MSVC 构建时 `Aurora.dll` 会作为 RCDATA 资源嵌入 GUI 程序：注入时
 cmake -S . -B build
 cmake --build build --config Release --parallel
 # 产物：build\bin\Release\MinecraftProxy.exe
-#      build\bin\Release\Aurora.dll（代理核心，MSVC 工具链时自动构建）
+#      build\bin\Release\Aurora.dll（代理核心，MSVC 工具链时自动构建，随后嵌入 GUI）
 ```
 
 GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成 exe）。
@@ -75,7 +75,7 @@ GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成
 
 - 仅供注入到 Minecraft 1.20.1 客户端（x64 Java 进程），反射式加载、驻留游戏进程
 - 恢复信号契约：DLL 在目标进程内创建 `MinecraftInjectedClientProxy.Resume.v1.<pid>` 命名事件；GUI 侧同时兼容旧版 `SakuraTools` 前缀
-- 如需替换为自编译版本：把构建好的 `Aurora.dll` 放到程序同目录（或在「注入」页指定路径），外部 DLL 优先于内置副本使用
+- 本程序仅使用内置代理核心；如需替换为自编译版本，请自行修改源码后重新构建
 
 ## 持久化
 

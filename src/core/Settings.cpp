@@ -57,7 +57,6 @@ SettingsData SettingsStore::Load()
         // Not marked dirty here; the value persists on the next Save anyway.
     }
 
-    d.dllPath = ReadString(kSectionInject, L"dllPath", L"");
 
     d.keyword = ReadString(kSectionInject, L"windowKeyword", L"");
     if (TrimW(d.keyword).empty())
@@ -89,7 +88,6 @@ void SettingsStore::Save(const SettingsData& d)
     WriteInt(kSectionUi, L"backdrop", d.backdrop == Backdrop::Mica ? 1
                                   : d.backdrop == Backdrop::Acrylic ? 2 : 0);
     WriteInt(kSectionUi, L"lang", d.lang);
-    WriteString(kSectionInject, L"dllPath", d.dllPath);
     WriteString(kSectionInject, L"windowKeyword", d.keyword);
     WriteInt(kSectionInject, L"port", d.port);
     WriteInt(kSectionInject, L"autoSwitchOnDone", d.autoSwitchOnDone ? 1 : 0);

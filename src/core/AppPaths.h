@@ -14,8 +14,6 @@ std::wstring SettingsIni();     // settings.ini inside SettingsDir()
 // Proxy log candidates, most preferred first (matches engine fallback order).
 std::vector<std::wstring> LogCandidates();
 
-// Where we look for the proxy DLL (Aurora.dll) if the user never chose one.
-std::vector<std::wstring> DefaultDllCandidates();
 
 // Non-loopback IPv4 addresses of this machine, for the "B 如何连接" hint.
 std::vector<std::wstring> LanIpAddresses();
