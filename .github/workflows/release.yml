@@ -159,7 +159,7 @@ jobs:
           $tag = '${{ steps.tag.outputs.tag }}'
           $zip = $env:zip
           $sums = 'dist\checksums.sha256'
-          $title = "Minecraft Injected Client Proxy $tag"
+          $title = "MinecraftProxy $tag"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists; re-uploading assets."
