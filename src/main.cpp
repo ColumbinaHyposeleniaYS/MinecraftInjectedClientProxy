@@ -30,6 +30,42 @@ void TrackMouse(HWND hwnd)
     TrackMouseEvent(&tme);
 }
 
+// ----------------------------------------------------------- single instance
+
+// One instance per logon session: UAC elevation stays inside the same
+// session, so the elevated copy shares this namespace with the plain one.
+const wchar_t* const kSingleInstanceMutex =
+    L"Local\\MinecraftInjectedClientProxy.SingleInstance";
+
+// A duplicate launch sends this to the running window so it can raise itself.
+const UINT g_msgActivateExisting = RegisterWindowMessageW(L"Micp.ActivateExistingInstance");
+
+// Bring the already-running window forward. We were just launched by the
+// user, so we hold the foreground privilege - hand it out so the running
+// instance may raise itself even though it is a different process.
+void ActivateExistingInstance(HWND existing)
+{
+    if (!existing)
+        return;
+    AllowSetForegroundWindow(ASFW_ANY);
+    // Preferred path: the running instance foregrounds itself (works even
+    // when it runs elevated and we do not - see ChangeWindowMessageFilterEx).
+    DWORD_PTR done = 0;
+    SendMessageTimeoutW(existing, g_msgActivateExisting, 0, 0,
+                        SMTO_NORMAL | SMTO_ABORTIFHUNG, 2000, &done);
+    // Fallbacks in case that instance is busy or never got the message.
+    if (IsIconic(existing))
+        ShowWindow(existing, SW_RESTORE);
+    if (!SetForegroundWindow(existing))
+    {
+        FLASHWINFO fw = {}; // at least flash the taskbar button
+        fw.cbSize = sizeof(fw);
+        fw.hwnd = existing;
+        fw.dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG;
+        FlashWindowEx(&fw);
+    }
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
@@ -192,6 +228,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
 
     default:
+        if (msg == g_msgActivateExisting)
+        {
+            // A duplicate launch asks us to come forward.
+            if (IsIconic(hwnd))
+                ShowWindow(hwnd, SW_RESTORE);
+            if (!SetForegroundWindow(hwnd))
+            {
+                FLASHWINFO fw = {}; // taskbar flash when foreground was denied
+                fw.cbSize = sizeof(fw);
+                fw.hwnd = hwnd;
+                fw.dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG;
+                FlashWindowEx(&fw);
+            }
+            return 1;
+        }
         if (msg == InjectionSequence::kMsgProgress)
         {
             g_app.OnSeqUpdate(false);
@@ -212,6 +263,61 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
 {
     using namespace micp;
+
+    // ----- single instance -------------------------------------------------
+    // A duplicate launch just raises the running window and quits. The
+    // run-as-admin button relaunches us elevated with --micp-takeover <old
+    // pid>; that copy waits for the old instance to bow out and then
+    // inherits the mutex, so the elevation swap is seamless.
+    DWORD takeoverPid = 0;
+    {
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (argv)
+        {
+            for (int i = 1; i + 1 < argc; ++i)
+                if (lstrcmpiW(argv[i], L"--micp-takeover") == 0)
+                    takeoverPid = DWORD(wcstoul(argv[i + 1], nullptr, 10));
+            LocalFree(argv);
+        }
+    }
+
+    HANDLE single = CreateMutexW(nullptr, FALSE, kSingleInstanceMutex);
+    if (single && GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        if (takeoverPid)
+        {
+            // Drop our own reference first - while we hold it open the
+            // named object can never be destroyed, wait or not.
+            CloseHandle(single);
+            single = nullptr;
+            if (HANDLE prev = OpenProcess(SYNCHRONIZE, FALSE, takeoverPid))
+            {
+                WaitForSingleObject(prev, 10000); // old instance closes itself
+                CloseHandle(prev);
+            }
+            // The process signal can slightly precede handle-table teardown,
+            // so poll until the mutex name is really gone (2s cap).
+            for (int i = 0; i < 40; ++i)
+            {
+                HANDLE probe = OpenMutexW(SYNCHRONIZE, FALSE, kSingleInstanceMutex);
+                if (!probe)
+                    break;
+                CloseHandle(probe);
+                Sleep(50);
+            }
+            single = CreateMutexW(nullptr, FALSE, kSingleInstanceMutex);
+        }
+        if (!single || GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            // Still occupied (plain duplicate, or the old instance refused
+            // to die): raise the running window and leave.
+            if (single)
+                CloseHandle(single);
+            ActivateExistingInstance(FindWindowW(L"MicpMainWindow", nullptr));
+            return 0;
+        }
+    }
 
     // Per-monitor v2 is in the manifest; this also covers unpackaged runs.
     if (HMODULE user32 = GetModuleHandleW(L"user32.dll"))
@@ -261,6 +367,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
 
     g_app.Init(hwnd);
 
+    // When we run elevated, UIPI would silently drop the activation ping sent
+    // by a non-elevated duplicate launch; let exactly that message through.
+    ChangeWindowMessageFilterEx(hwnd, g_msgActivateExisting, MSGFLT_ALLOW, nullptr);
+
     // Guard against a saved placement that is fully off-screen (e.g. the
     // monitor was disconnected) - otherwise the window would be invisible.
     if (st.hasPlacement && !MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL))
@@ -286,5 +396,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
     Gdiplus::GdiplusShutdown(g_gdipToken);
     WSACleanup();
     CoUninitialize();
+    if (single)
+        CloseHandle(single);
     return int(msg.wParam);
 }

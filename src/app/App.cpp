@@ -1871,7 +1871,22 @@ void App::OnCommand(int id)
     {
         wchar_t exe[MAX_PATH * 2] = {};
         GetModuleFileNameW(nullptr, exe, MICP_ARRLEN(exe));
-        ShellExecuteW(m_hwnd, L"runas", exe, nullptr, nullptr, SW_SHOWNORMAL);
+        // Relaunch elevated with our PID: the new copy waits for this
+        // instance to bow out and then inherits the single-instance mutex
+        // (see WinMain). Close ourselves as soon as the elevation is
+        // accepted; stay put (toast) when the UAC prompt is cancelled.
+        const std::wstring params = FormatStr(L"--micp-takeover %lu", GetCurrentProcessId());
+        SHELLEXECUTEINFOW sei = {};
+        sei.cbSize = sizeof(sei);
+        sei.fMask = SEE_MASK_NOASYNC;
+        sei.lpVerb = L"runas";
+        sei.lpFile = exe;
+        sei.lpParameters = params.c_str();
+        sei.nShow = SW_SHOWNORMAL;
+        if (ShellExecuteExW(&sei))
+            PostMessageW(m_hwnd, WM_CLOSE, 0, 0); // orderly exit (saves settings)
+        else
+            ShowToast(L"\u5df2\u53d6\u6d88\u7ba1\u7406\u5458\u91cd\u542f", 2); // 已取消管理员重启
     }
 }
 

@@ -30,6 +30,7 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 - Per-Monitor V2 高 DPI、跟随系统的深浅色切换（`WM_SETTINGCHANGE`）
 - 注入引擎移植自上游 Compass（反射式注入，`src/core/injectcore/`），支持驻留代理恢复信号
 - 端口探测基于 `GetExtendedTcpTable`（不建套接字），可判断"目标 PID 是否已监听端口"与 B 端连接数
+- 单实例运行：重复启动不会开第二个窗口，只会把已打开的窗口还原并置顶；「以管理员运行」由新实例接管（旧实例在提权成功后自动退出），UAC 取消则留在原地
 
 ## 目录结构
 
