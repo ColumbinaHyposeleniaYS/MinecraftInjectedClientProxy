@@ -565,10 +565,10 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
                      RectF(L.stLangValue.x + float(S(12)), L.stLangValue.y,
                            L.stLangValue.w - float(S(36)), L.stLangValue.h));
             const float cx = L.stLangValue.right() - float(S(14));
-            const float cy = L.stLangValue.y + L.stLangValue.h / 2 + float(m_langOpen ? S(1) : -S(1));
+            const float cy = L.stLangValue.y + L.stLangValue.h / 2 + float(app.m_langOpen ? S(1) : -S(1));
             const float s = float(S(4));
             Gdiplus::Pen pen(pal.text2, 1.6f);
-            if (m_langOpen) // chevron points up while the popup is open
+            if (app.m_langOpen) // chevron points up while the popup is open
             {
                 g.DrawLine(&pen, Gdiplus::PointF(cx - s, cy + s / 2),
                           Gdiplus::PointF(cx, cy - s / 2));
