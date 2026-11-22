@@ -66,7 +66,7 @@ target_compile_definitions(micp PRIVATE
 
 target_link_libraries(micp PRIVATE
     user32 gdi32 gdiplus dwmapi shell32 comdlg32 advapi32
-    iphlpapi ws2_32 ole32)
+    iphlpapi ws2_32 ole32 msimg32) # msimg32: AlphaBlend for page transitions
 
 set_target_properties(micp PROPERTIES
     OUTPUT_NAME "MinecraftInjectedClientProxy"

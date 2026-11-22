@@ -7,6 +7,7 @@
 
 #include <commdlg.h>
 #include <cstdlib>
+#include <cmath>
 #include <uxtheme.h> // MARGINS (used by DwmExtendFrameIntoClientArea)
 #include <shellapi.h>
 #include <windowsx.h>
@@ -170,6 +171,10 @@ void App::Init(HWND hwnd)
                                  GetModuleHandleW(nullptr), nullptr);
     SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
     SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
+    // macOS-like inner padding for the borderless fields.
+    const LPARAM margins = MAKELPARAM(S(8), S(8));
+    SendMessageW(m_editKw, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
+    SendMessageW(m_editPort, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
     // Both edits share the EDIT class proc; hook them once for wheel forwarding.
     if (!g_editOrigProc)
     {
@@ -181,10 +186,14 @@ void App::Init(HWND hwnd)
     m_dllFound = Injector::FileReadable(ResolvedDllPath());
     m_mon.Configure(m_set.keyword, uint16_t(m_set.port));
 
-    SetTimer(hwnd, 1, 100, nullptr);   // fast: toast / spinner / progress
+    SetTimer(hwnd, 1, 15, nullptr);    // fast: animation clock / spinner
     SetTimer(hwnd, 2, 500, nullptr);   // log tail
     SetTimer(hwnd, 3, 1000, nullptr);  // proxy monitor
     SetTimer(hwnd, 4, 900, nullptr);   // settings save debounce
+
+    // The first paint renders straight away; only page switches animate.
+    m_pageAnim.v = 1.0f;
+    m_pageAnim.target = 1.0f;
 
     ApplyThemeInternal();
     ApplyBackdrop();
@@ -462,9 +471,14 @@ void App::Relayout()
                                      L.ijSteps.w - cardPad * 2 - float(S(48)), float(S(64)));
             stepY += float(S(64));
         }
-        // progress bar sits below the step-4 detail line, not on top of it
-        L.ijBar = RectF(L.ijStepTexts[3].x, L.ijStepTexts[3].y + float(S(48)), float(S(180)),
-                        float(S(6)));
+        // WaitPort progress bar sits under the step-4 detail line (the title
+        // line is now centered on the bullet, see PaintInject).
+        {
+            const float yc = L.ijStepBullets[3].y + L.ijStepBullets[3].w / 2;
+            L.ijBar = RectF(L.ijStepTexts[3].x,
+                            yc + float(LineH(FBodySem)) / 2 + float(LineH(FSmall)) + float(S(8)),
+                            float(S(180)), float(S(6)));
+        }
 
         L.ijBanner = RectF(L.ijSteps.x + cardPad, stepY, L.ijSteps.w - cardPad * 2, float(S(46)));
 
@@ -675,9 +689,12 @@ void App::Relayout()
                             float(S(24)));
         L.abTag = RectF(L.pageBox.x, L.abVersion.bottom() + float(S(10)), L.pageBox.w,
                         float(LineH(FBody)));
-        L.abBtnGh = RectF(cxr - float(S(70)) - float(S(10)), L.abTag.bottom() + float(S(22)),
-                           float(S(132)), float(S(38)));
-        L.abBtnDoc = RectF(cxr + float(S(10)), L.abBtnGh.y, float(S(132)), float(S(38)));
+        // Two equally sized buttons, symmetric around the column center with
+        // a gap - the old math placed the GitHub button across the middle.
+        const float bw = float(S(132));
+        const float gap = float(S(10));
+        L.abBtnGh = RectF(cxr - gap - bw, L.abTag.bottom() + float(S(22)), bw, float(S(38)));
+        L.abBtnDoc = RectF(cxr + gap, L.abBtnGh.y, bw, float(S(38)));
         L.abFoot = RectF(L.pageBox.x, L.abBtnGh.bottom() + float(S(20)), L.pageBox.w,
                          L.pageBox.h - (L.abBtnGh.bottom() + float(S(20))));
         {
@@ -706,13 +723,18 @@ void App::Relayout()
     if (L.pageMaxScroll <= 0)
     {
         m_pageScroll = 0;
+        m_pageScrollTarget = 0;
         L.pageTrack = RectF();
         L.pageThumb = RectF();
     }
     else
     {
         ClampPageScroll();
-        L.pageTrack = RectF(L.pageBox.right() + float(S(6)), L.pageBox.y, float(S(8)),
+        if (m_pageScrollTarget > L.pageMaxScroll)
+            m_pageScrollTarget = L.pageMaxScroll;
+        // macOS overlay scrollbar: hugs the window's right edge, floats over
+        // the content, no visible track.
+        L.pageTrack = RectF(L.content.right() - float(S(15)), L.pageBox.y, float(S(8)),
                             L.pageBox.h);
         float thumbH = L.pageBox.h * L.pageBox.h / L.pageContentH;
         if (thumbH < float(S(36)))
@@ -721,6 +743,25 @@ void App::Relayout()
         L.pageThumb = RectF(L.pageTrack.x,
                             L.pageTrack.y + (m_pageScroll / L.pageMaxScroll) * track,
                             L.pageTrack.w, thumbH);
+    }
+
+    // Animated controls get their persistent values seeded once, so knobs
+    // and segmented thumbs don't slide from zero on every relayout.
+    for (const SegDef& s : L.segs)
+    {
+        auto it = m_segAnims.find(s.id);
+        if (it == m_segAnims.end())
+            m_segAnims[s.id] = AnimVal{ float(s.sel), float(s.sel) };
+        else
+            it->second.target = float(s.sel);
+    }
+    for (const TglDef& t : L.tgls)
+    {
+        auto it = m_knobAnims.find(t.id);
+        if (it == m_knobAnims.end())
+            m_knobAnims[t.id] = AnimVal{ t.on ? 1.0f : 0.0f, t.on ? 1.0f : 0.0f };
+        else
+            it->second.target = t.on ? 1.0f : 0.0f;
     }
 
     // The EDIT children follow the inject-page fields (with the scroll offset).
@@ -743,23 +784,42 @@ void App::ApplyEditPlacement()
     };
     auto place = [&](HWND edit, const RectF& r)
     {
-        if (!show || r.w <= 0)
+        if (!show || r.w <= 0 || m_pageAnim.v < 1.0f)
         {
+            // During a page transition the fields stay hidden - the HWNDs
+            // would otherwise pop in at full opacity over the crossfade.
             hide(edit);
             return;
         }
         // The page scrolls as a whole: the child windows follow the offset.
         RectF v = r;
         v.y -= m_pageScroll;
-        // Child HWNDs are not clipped by the parent's paint clip, so keep them
-        // only while fully inside the viewport.
-        const bool inside = v.y >= L.pageBox.y - 1 && v.bottom() <= L.pageBox.bottom() + 1;
-        if (!inside)
+        // The single-line EDIT draws its text at the top of its client rect,
+        // which looks glued to the ceiling inside the 32px field frame. The
+        // child is therefore only text-tall and vertically centered in the
+        // frame; the painted frame around it stays full height.
+        const float textH = float(LineH(FBody)) + 2.0f;
+        RectF c(v.x, v.y + (v.h - textH) / 2, v.w, textH);
+        // Clip the child to the scroll viewport so partially scrolled fields
+        // don't paint over the toolbar above the page box.
+        const float kx0 = c.x > L.pageBox.x ? c.x : L.pageBox.x;
+        const float ky0 = c.y > L.pageBox.y ? c.y : L.pageBox.y;
+        const float kx1 = c.right() < L.pageBox.right() ? c.right() : L.pageBox.right();
+        const float ky1 = c.bottom() < L.pageBox.bottom() ? c.bottom() : L.pageBox.bottom();
+        if (kx1 <= kx0 || ky1 <= ky0)
         {
             hide(edit);
             return;
         }
-        SetWindowPos(edit, nullptr, int(v.x), int(v.y), int(v.w), int(v.h),
+        HRGN rgn = CreateRectRgn(int(kx0 - c.x), int(ky0 - c.y),
+                                 int(kx1 - c.x + 0.5f), int(ky1 - c.y + 0.5f));
+        if (SetWindowRgn(edit, rgn, FALSE) == 0)
+        {
+            DeleteObject(rgn);
+            hide(edit);
+            return;
+        }
+        SetWindowPos(edit, nullptr, int(c.x), int(c.y), int(c.w), int(c.h),
                      flag | SWP_SHOWWINDOW);
         EnableWindow(edit, !m_seq.IsRunning());
     };
@@ -802,6 +862,9 @@ void App::OnDpiChanged(int dpi, const RECT* suggested)
     RebuildFonts(dpi);
     SendMessageW(m_editKw, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
     SendMessageW(m_editPort, WM_SETFONT, reinterpret_cast<WPARAM>(WFont(FBody, true)), TRUE);
+    const LPARAM margins = MAKELPARAM(S(8), S(8));
+    SendMessageW(m_editKw, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
+    SendMessageW(m_editPort, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, margins);
     m_layoutDirty = true;
     if (suggested)
         SetWindowPos(m_hwnd, nullptr, suggested->left, suggested->top,
@@ -827,6 +890,8 @@ void App::OnMouseLeave()
     m_hoverId = 0;
     m_tlHoverAny = false;
     m_tlHoverIdx = -1;
+    for (auto& kv : m_hoverAnims)
+        kv.second.target = 0;
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -846,7 +911,9 @@ void App::OnMouseMove(POINT pt, bool fromNc)
                 const float rel = (float(pt.y) - L.pageTrack.y - m_pageThumbGrab) / track;
                 m_pageScroll = rel * L.pageMaxScroll;
                 ClampPageScroll();
+                m_pageScrollTarget = m_pageScroll;
                 ApplyEditPlacement();
+                PokePageSb();
                 InvalidateRect(m_hwnd, nullptr, FALSE);
             }
         }
@@ -870,7 +937,9 @@ void App::OnMouseMove(POINT pt, bool fromNc)
                 m_logScroll = 0;
             if (m_logScroll > maxScroll)
                 m_logScroll = maxScroll;
+            m_logScrollTarget = m_logScroll;
             m_logPinned = (m_logScroll >= maxScroll - 0.5f);
+            PokeLogSb();
             InvalidateRect(m_hwnd, nullptr, FALSE);
         }
         return;
@@ -879,11 +948,16 @@ void App::OnMouseMove(POINT pt, bool fromNc)
     {
         m_logScroll -= float(pt.y - prevY);
         ClampLogScroll(L);
+        m_logScrollTarget = m_logScroll;
+        PokeLogSb();
         InvalidateRect(m_hwnd, nullptr, FALSE);
         return;
     }
 
-    // Hover tracking for page controls uses layout coordinates (scrolled).
+    // Hover tracking for page controls uses layout coordinates (scrolled);
+    // the overlay scrollbars live outside the scrolled content, so they keep
+    // using the raw client point.
+    const POINT raw = pt;
     pt = MapContentPoint(pt);
 
     int hover = 0;
@@ -904,6 +978,14 @@ void App::OnMouseMove(POINT pt, bool fromNc)
             if (L.nav[i].contains(float(pt.x), float(pt.y)))
                 hover = ID_NAV + i;
     }
+    // Overlay scrollbars keep their thumb revealed while hovered.
+    if (!hover && m_page != PgLogs && L.pageMaxScroll > 0
+        && L.pageTrack.contains(float(raw.x), float(raw.y)))
+        hover = ID_PAGE_SB;
+    if (!hover && m_page == PgLogs && L.lgScroll.w > 0
+        && float(raw.x) >= L.lgScroll.x - 2 && float(raw.x) <= L.lgScroll.right() + 2
+        && float(raw.y) >= L.lgScroll.y && float(raw.y) <= L.lgScroll.bottom())
+        hover = ID_LOG_SB;
     if (!hover)
     {
         for (const RowDef& row : L.rows)
@@ -935,6 +1017,9 @@ void App::OnMouseMove(POINT pt, bool fromNc)
 
     if (hover != m_hoverId || tlAny != m_tlHoverAny || tlIdx != m_tlHoverIdx)
     {
+        // Ease the old control out and the new one in.
+        SetHoverTarget(m_hoverId, false);
+        SetHoverTarget(hover, true);
         m_hoverId = hover;
         m_tlHoverAny = tlAny;
         m_tlHoverIdx = tlIdx;
@@ -957,7 +1042,7 @@ void App::OnLButtonDown(POINT pt)
             return;
         }
 
-    // page scrollbar (overlay, right of the content column; unscrolled coords)
+    // page scrollbar (overlay at the window's right edge; unscrolled coords)
     if (m_page != PgLogs && L.pageMaxScroll > 0 && L.pageTrack.contains(px, py))
     {
         m_pageThumbGrab = (py >= L.pageThumb.y && py <= L.pageThumb.bottom())
@@ -971,8 +1056,10 @@ void App::OnLButtonDown(POINT pt)
             const float rel = (py - L.pageTrack.y - m_pageThumbGrab) / track;
             m_pageScroll = rel * L.pageMaxScroll;
             ClampPageScroll();
+            m_pageScrollTarget = m_pageScroll;
             ApplyEditPlacement();
         }
+        PokePageSb();
         InvalidateRect(m_hwnd, nullptr, FALSE);
         return;
     }
@@ -1012,7 +1099,9 @@ void App::OnLButtonDown(POINT pt)
                 m_logScroll = rel * maxScroll;
                 if (m_logScroll < 0) m_logScroll = 0;
                 if (m_logScroll > maxScroll) m_logScroll = maxScroll;
+                m_logScrollTarget = m_logScroll;
                 m_logPinned = (m_logScroll >= maxScroll - 0.5f);
+                PokeLogSb();
                 InvalidateRect(m_hwnd, nullptr, FALSE);
                 return;
             }
@@ -1136,9 +1225,18 @@ void App::OnMouseWheel(POINT pt, int delta)
             return;
         const float rowH = float(S(24));
         const float step = rowH * 3 * (delta / float(WHEEL_DELTA));
-        m_logScroll -= step;
-        ClampLogScroll(L);
-        InvalidateRect(m_hwnd, nullptr, FALSE);
+        const float maxScroll = LogMaxScroll(L);
+        if (maxScroll <= 0)
+            return;
+        // Eased scrolling: the wheel moves the target, the animation clock
+        // glides the actual offset toward it (macOS trackpad feel).
+        m_logScrollTarget -= step;
+        if (m_logScrollTarget < 0)
+            m_logScrollTarget = 0;
+        if (m_logScrollTarget > maxScroll)
+            m_logScrollTarget = maxScroll;
+        m_logPinned = (m_logScrollTarget >= maxScroll - 0.5f);
+        PokeLogSb();
         return;
     }
 
@@ -1146,13 +1244,15 @@ void App::OnMouseWheel(POINT pt, int delta)
     // viewport), including while an EDIT field holds focus (the subclass
     // forwards the wheel here).
     if (L.pageMaxScroll > 0
-        && pt.x >= L.pageBox.x - float(S(16)) && pt.y >= L.pageBox.y - float(S(8)))
+        && pt.x >= L.content.x && pt.y >= L.pageBox.y - float(S(8)))
     {
         const float step = float(S(38)) * 3 * (delta / float(WHEEL_DELTA));
-        m_pageScroll -= step;
-        ClampPageScroll();
-        ApplyEditPlacement();
-        InvalidateRect(m_hwnd, nullptr, FALSE);
+        m_pageScrollTarget -= step;
+        if (m_pageScrollTarget < 0)
+            m_pageScrollTarget = 0;
+        if (m_pageScrollTarget > L.pageMaxScroll)
+            m_pageScrollTarget = L.pageMaxScroll;
+        PokePageSb();
     }
 }
 
@@ -1194,16 +1294,24 @@ void App::OnTimer(int id)
 {
     m_now = GetTickCount64();
 
-    if (id == 1) // fast
+    if (id == 1) // fast: animation clock
     {
-        m_spin += 24;
-        bool anim = m_seq.IsRunning();
-        if (!m_toastText.empty() && m_now >= m_toastUntil)
+        static ULONGLONG s_lastTick = 0;
+        float dt = s_lastTick ? float(m_now - s_lastTick) / 1000.0f : 0.016f;
+        s_lastTick = m_now;
+        if (dt <= 0)
+            dt = 0.001f;
+        if (dt > 0.1f)
+            dt = 0.1f;
+
+        bool busy = false;
+        if (m_seq.IsRunning())
         {
-            m_toastText.clear();
-            anim = true;
+            m_spin = (m_spin + int(dt * 300.0f)) % 360;
+            busy = true;
         }
-        if (anim)
+        busy |= TickAnimations(dt);
+        if (busy)
             InvalidateRect(m_hwnd, nullptr, FALSE);
     }
     else if (id == 2) // log poll
@@ -1215,6 +1323,7 @@ void App::OnTimer(int id)
             m_logSource = r.source;
             AppendLogLines(r.lines);
             m_logScroll = 0;
+            m_logScrollTarget = 0;
             m_logPinned = true;
             if (m_page == PgLogs || m_page == PgSettings)
                 InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -1243,6 +1352,152 @@ void App::OnTimer(int id)
         if (m_dirty)
             SaveNow();
     }
+}
+
+// -------------------------------------------------------------- animation
+
+float App::HoverT(int id) const
+{
+    if (!id)
+        return 0;
+    const auto it = m_hoverAnims.find(id);
+    return it == m_hoverAnims.end() ? 0.0f : it->second.v;
+}
+
+float App::KnobT(int id) const
+{
+    const auto it = m_knobAnims.find(id);
+    return it == m_knobAnims.end() ? 0.0f : it->second.v;
+}
+
+float App::SegT(int id, int sel) const
+{
+    const auto it = m_segAnims.find(id);
+    return it == m_segAnims.end() ? float(sel) : it->second.v;
+}
+
+void App::SetHoverTarget(int id, bool on)
+{
+    if (!id)
+        return;
+    AnimVal& a = m_hoverAnims[id];
+    a.target = on ? 1.0f : 0.0f;
+    // A control that has never been hovered starts settled at 0; if it is
+    // first seen already hovered, fade in from 0 for a soft entrance.
+}
+
+void App::PokePageSb()
+{
+    m_sbIdle = m_now;
+    m_sbAnim.target = 1.0f;
+}
+
+void App::PokeLogSb()
+{
+    m_lgSbIdle = m_now;
+    m_lgSbAnim.target = 1.0f;
+}
+
+bool App::TickAnimations(float dt)
+{
+    bool busy = false;
+
+    auto ease = [&](AnimVal& a, float rate)
+    {
+        const float diff = a.target - a.v;
+        if (diff > 0.001f || diff < -0.001f)
+        {
+            a.v += diff * (1.0f - std::exp(-dt * rate));
+            if (std::abs(a.target - a.v) < 0.002f)
+                a.v = a.target;
+            busy = true;
+        }
+    };
+
+    for (auto& kv : m_hoverAnims)
+        ease(kv.second, 14.0f);
+    for (auto& kv : m_knobAnims)
+        ease(kv.second, 16.0f);
+    for (auto& kv : m_segAnims)
+        ease(kv.second, 15.0f);
+    ease(m_toastAnim, 11.0f);
+    ease(m_editFocusAnim[0], 14.0f);
+    ease(m_editFocusAnim[1], 14.0f);
+    {
+        const float prev = m_pageAnim.v;
+        ease(m_pageAnim, 9.0f);
+        if (prev < 1.0f && m_pageAnim.v >= 1.0f)
+        {
+            // Transition finished: relayout so the EDIT children of the new
+            // page come back (they stayed hidden during the crossfade).
+            m_layoutDirty = true;
+            busy = true;
+        }
+    }
+
+    // Scrollbar reveal + auto-hide (macOS overlay scrollbars fade out
+    // shortly after scrolling stops).
+    {
+        const bool active = m_pageThumbDrag || m_hoverId == ID_PAGE_SB
+                            || m_now < m_sbIdle + 800;
+        m_sbAnim.target = (active && m_lay.pageMaxScroll > 0) ? 1.0f : 0.0f;
+        ease(m_sbAnim, 10.0f);
+    }
+    {
+        const bool active = m_thumbDragging || m_hoverId == ID_LOG_SB
+                            || m_now < m_lgSbIdle + 800;
+        m_lgSbAnim.target = (active && LogMaxScroll(m_lay) > 0) ? 1.0f : 0.0f;
+        ease(m_lgSbAnim, 10.0f);
+    }
+
+    // Toast phases: fade in, hold, fade out, then clear the text.
+    if (!m_toastText.empty())
+    {
+        if (m_now >= m_toastUntil)
+            m_toastAnim.target = 0;
+        if (m_toastAnim.target == 0 && m_toastAnim.v <= 0.001f)
+            m_toastText.clear();
+    }
+
+    // Eased wheel scrolling: the page glide uses the same offset the paint
+    // pass and hit-testing see, so controls stay in sync frame by frame.
+    if (m_lay.pageMaxScroll > 0)
+    {
+        const float diff = m_pageScrollTarget - m_pageScroll;
+        if (diff > 0.5f || diff < -0.5f)
+        {
+            m_pageScroll += diff * (1.0f - std::exp(-dt * 16.0f));
+            if (std::abs(m_pageScrollTarget - m_pageScroll) <= 0.5f)
+                m_pageScroll = m_pageScrollTarget;
+            ClampPageScroll();
+            ApplyEditPlacement();
+            busy = true;
+        }
+    }
+    {
+        const float maxScroll = LogMaxScroll(m_lay);
+        if (maxScroll > 0)
+        {
+            if (m_logPinned && m_set.followLog)
+            {
+                m_logScrollTarget = maxScroll;
+            }
+            const float diff = m_logScrollTarget - m_logScroll;
+            if (diff > 0.5f || diff < -0.5f)
+            {
+                m_logScroll += diff * (1.0f - std::exp(-dt * 16.0f));
+                if (std::abs(m_logScrollTarget - m_logScroll) <= 0.5f)
+                    m_logScroll = m_logScrollTarget;
+                if (m_logScroll < 0)
+                    m_logScroll = 0;
+                if (m_logScroll > maxScroll)
+                    m_logScroll = maxScroll;
+                busy = true;
+            }
+        }
+    }
+
+    return busy;
 }
 
 // ------------------------------------------------------------------ edits
@@ -1286,12 +1541,12 @@ void App::OnEditChanged(int ctrlId)
 
 void App::OnEditFocus(int ctrlId, bool focused)
 {
+    const int idx = ctrlId == ID_EDIT_KEYWORD ? 0 : 1;
+    m_editFocusAnim[idx].target = focused ? 1.0f : 0.0f;
     const int next = focused ? ctrlId : 0;
     if (m_editFocused != next)
-    {
         m_editFocused = next;
-        InvalidateRect(m_hwnd, nullptr, FALSE);
-    }
+    // The focus ring fades via the animation clock; no immediate repaint.
 }
 
 // -------------------------------------------------------------- injection
@@ -1446,12 +1701,20 @@ void App::SwitchPage(PageId page)
 {
     if (m_page == page)
         return;
+    // Capture the outgoing view for the crossfade transition.
+    SnapshotPageContent();
     m_page = page;
     m_hoverId = 0;
     m_pressId = 0;
+    for (auto& kv : m_hoverAnims)
+        kv.second.target = 0;
     m_pageScroll = 0;      // fresh page starts at the top
+    m_pageScrollTarget = 0;
     m_pageThumbDrag = false;
+    m_pageAnim.v = 0;
+    m_pageAnim.target = 1;
     m_layoutDirty = true;  // Relayout re-places the EDIT children
+    ApplyEditPlacement();  // hides the fields while the crossfade runs
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -1476,6 +1739,7 @@ void App::SegChanged(int segId, int item)
         const Layout& L = Lay();
         ClampLogScroll(L);
     }
+    m_segAnims[segId].target = float(item); // slide the thumb
     m_layoutDirty = true;
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
@@ -1488,6 +1752,10 @@ void App::ToggleSetting(int id)
         m_set.toastOnDone = !m_set.toastOnDone;
     else if (id == ID_TGL_FOLLOW)
         m_set.followLog = !m_set.followLog;
+    // Animate the knob to its new side.
+    m_knobAnims[id].target = (id == ID_TGL_AUTOSWITCH ? m_set.autoSwitchOnDone
+                          : id == ID_TGL_TOASTDONE ? m_set.toastOnDone
+                                                   : m_set.followLog) ? 1.0f : 0.0f;
     m_dirty = true;
     m_layoutDirty = true;
     InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -1643,7 +1911,7 @@ bool App::PassesFilter(const LogEntry& e) const
     }
 }
 
-void App::ClampLogScroll(const Layout& L)
+float App::LogMaxScroll(const Layout& L) const
 {
     const float rowH = float(S(24));
     int matched = 0;
@@ -1651,13 +1919,25 @@ void App::ClampLogScroll(const Layout& L)
         if (PassesFilter(e))
             ++matched;
     const float contentH = matched * rowH;
-    const float maxScroll = contentH > L.lgBody.h ? contentH - L.lgBody.h : 0;
+    return contentH > L.lgBody.h ? contentH - L.lgBody.h : 0.0f;
+}
+
+void App::ClampLogScroll(const Layout& L)
+{
+    const float maxScroll = LogMaxScroll(L);
     if (m_logPinned && m_set.followLog)
+    {
         m_logScroll = maxScroll;
+        m_logScrollTarget = maxScroll;
+    }
     if (m_logScroll < 0)
         m_logScroll = 0;
     if (m_logScroll > maxScroll)
         m_logScroll = maxScroll;
+    if (m_logScrollTarget < 0)
+        m_logScrollTarget = 0;
+    if (m_logScrollTarget > maxScroll)
+        m_logScrollTarget = maxScroll;
     m_logPinned = (m_logScroll >= maxScroll - 0.5f);
 }
 
@@ -1688,6 +1968,8 @@ void App::ShowToast(const std::wstring& text, int kind)
     m_toastText = text;
     m_toastKind = kind;
     m_toastUntil = GetTickCount64() + 2600;
+    m_toastAnim.v = 0;     // replay the slide-in even if one is already up
+    m_toastAnim.target = 1;
     InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 

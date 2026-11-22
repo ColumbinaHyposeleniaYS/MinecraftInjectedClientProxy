@@ -2,6 +2,8 @@
 
 #include "core/AppPaths.h"
 
+#include <msimg32.h> // AlphaBlend (page transition crossfade)
+
 namespace micp {
 namespace {
 
@@ -63,11 +65,20 @@ struct BackBuffer
     }
 };
 
-BackBuffer s_buf;
+BackBuffer s_buf;      // the window's back buffer (last painted frame)
+BackBuffer s_snap;     // outgoing page snapshot for the crossfade
+BackBuffer s_newPage;  // incoming page render target during the crossfade
 
 Gdiplus::Color ApplyAlpha(const Gdiplus::Color& c, float a)
 {
     return Gdiplus::Color(BYTE(255 * a), c.GetR(), c.GetG(), c.GetB());
+}
+
+// Fades a color toward transparency while keeping its designed base alpha
+// (toasts are translucent pills, not opaque ones).
+Gdiplus::Color FadeKeep(const Gdiplus::Color& c, float k)
+{
+    return Gdiplus::Color(BYTE(c.GetA() * k), c.GetR(), c.GetG(), c.GetB());
 }
 
 void Card(Gdiplus::Graphics& g, const RectF& r, const wchar_t* title = nullptr)
@@ -84,14 +95,8 @@ void Card(Gdiplus::Graphics& g, const RectF& r, const wchar_t* title = nullptr)
                        float(LineH(FHead))));
 }
 
-HoverState HoverOf(const App& app, int id)
-{
-    if (app.m_pressId == id)
-        return app.m_hoverId == id ? HoverState::Press : HoverState::None;
-    if (app.m_hoverId == id)
-        return HoverState::Hover;
-    return HoverState::None;
-}
+float HoverTOf(int id) { return g_app.HoverT(id); }
+bool PressedOf(int id) { return g_app.m_pressId == id && g_app.m_hoverId == id; }
 
 std::wstring FileNameOf(const std::wstring& path)
 {
@@ -99,6 +104,14 @@ std::wstring FileNameOf(const std::wstring& path)
     if (slash == std::wstring::npos)
         return path;
     return path.substr(slash + 1);
+}
+
+// macOS overlay scrollbar thumb color: clearly visible, no track line.
+Gdiplus::Color SbThumbColor(float alpha01)
+{
+    if (IsDark())
+        return Gdiplus::Color(BYTE(255 * alpha01), 235, 235, 245);
+    return Gdiplus::Color(BYTE(255 * alpha01), 60, 60, 67);
 }
 
 } // namespace
@@ -245,10 +258,17 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
             const float y = rowY0 + i * float(S(30));
             ui::Text(g, rows[i].label, FSmall, pal.text2,
                      RectF(labelX, y, labelW, float(S(30))));
-            RectF vr(labelX + labelW, y, L.ovInfo.w - labelW - float(S(36)) - float(S(200)), float(S(30)));
-            if (rows[i].hasState)
-                vr.w -= float(S(90));
-            ui::Text(g, rows[i].value, FBody, pal.text, vr, ui::Align::Right);
+            // Values align to the card's right padding; only state rows keep
+            // a reserve for the trailing status text.
+            float reserve = rows[i].hasState ? float(S(150)) : 0.0f;
+            RectF vr(labelX + labelW, y,
+                     L.ovInfo.w - labelW - float(S(36)) - reserve, float(S(30)));
+            const bool emptyValue = TrimW(rows[i].value).empty();
+            if (emptyValue)
+                ui::Text(g, L"\u672a\u8bbe\u7f6e", FSmall, pal.text3, vr, ui::Align::Right); // 未设置
+            else
+                ui::Text(g, rows[i].value, FBody, emptyValue ? pal.text3 : pal.text, vr,
+                         ui::Align::Right);
             if (rows[i].hasState)
                 ui::Text(g, rows[i].stateText, FSmall, rows[i].stateColor,
                          RectF(labelX + labelW, y, L.ovInfo.w - labelW - float(S(36)), float(S(30))),
@@ -308,10 +328,9 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
 
         auto rowLabel = [&](const RectF& row, const wchar_t* label)
         {
-            ui::Text(g, label, FSmall, pal.text2, RectF(labelX, row.y + 4, labelW, row.h - 8));
+            ui::Text(g, label, FSmall, pal.text2, RectF(labelX, row.y, labelW, row.h));
         };
-        // Hints live under their fields now: full card width, wrapping - the
-        // old right-side hints overflowed the card and hit the window edge.
+        // Hints live under their fields: full card width, wrapping.
         auto rowHint = [&](const RectF& r, const std::wstring& text)
         {
             if (r.w > 0)
@@ -351,14 +370,17 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
                 g.DrawLine(&pen, Gdiplus::PointF(b.x + b.w / 2, b.bottom() + float(S(4))),
                            Gdiplus::PointF(nb.x + nb.w / 2, nb.y - float(S(4))));
             }
+            // The title line is centered on the bullet's middle; the detail
+            // line sits right below it (they used to float above the dots).
+            const float yc = b.y + b.w / 2;
             const Gdiplus::Color nameColor = app.m_stepState[i] == 3
                 ? p.danger
                 : (app.m_stepState[i] == 0 ? p.text2 : p.text);
             ui::Text(g, kStepNames[i], FBodySem, nameColor,
-                     RectF(t.x, t.y + float(S(8)), t.w, float(LineH(FBodySem))));
+                     RectF(t.x, yc - float(LineH(FBodySem)) / 2, t.w, float(LineH(FBodySem))));
             if (!app.m_stepDetail[i].empty())
                 ui::Text(g, app.m_stepDetail[i], FSmall, p.text2,
-                         RectF(t.x, t.y + float(S(10)) + float(LineH(FBodySem)), t.w,
+                         RectF(t.x, yc + float(LineH(FBodySem)) / 2 + float(S(2)), t.w,
                                float(LineH(FSmall))));
         }
 
@@ -402,16 +424,21 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
         if (seg.id != ID_SEG_LOGFILTER)
             continue;
         int hoverItem = -1;
+        float hoverFade = 0;
         if (app.m_hoverId / 100 == seg.id && app.m_hoverId % 100 >= 1)
+        {
             hoverItem = app.m_hoverId % 100 - 1;
-        ui::Segmented(g, seg.r, seg.items, seg.sel, hoverItem, nullptr);
+            hoverFade = app.HoverT(app.m_hoverId);
+        }
+        ui::Segmented(g, seg.r, seg.items, app.SegT(seg.id, seg.sel), hoverItem, hoverFade,
+                      nullptr);
     }
     ui::Text(g, L"\u81ea\u52a8\u6eda\u52a8", FSmall, pal.text2, // 自动滚动
              RectF(L.lgTglLabel.x - float(S(4)), L.lgTgl.y - float(S(3)), L.lgTglLabel.w,
                    L.lgTgl.h + float(S(6))), ui::Align::Right);
     for (const TglDef& t : L.tgls)
         if (t.id == ID_TGL_FOLLOW)
-            ui::Toggle(g, t.r, t.on, HoverOf(app, t.id));
+            ui::Toggle(g, t.r, app.KnobT(t.id), app.HoverT(t.id));
 
     // card
     const Gdiplus::Color cardFill = app.m_backdropActive
@@ -490,18 +517,24 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
             ui::Text(g, e.text, FMono, pal.lvText, RectF(msgX, y, msgW, rowH));
             ++drawn;
         }
-        // scrollbar
+        // overlay scrollbar (auto-hiding, no track)
         if (maxScroll > 0 && L.lgBody.h > 40)
         {
-            const float viewH = L.lgBody.h;
-            const float contentH = shown * rowH;
-            float thumbH = viewH * viewH / contentH;
-            if (thumbH < float(S(28)))
-                thumbH = float(S(28));
-            const float track = viewH - thumbH;
-            const float thumbY = L.lgBody.y + (app.m_logScroll / maxScroll) * track;
-            ui::RoundRect(g, RectF(L.lgScroll.x, thumbY, L.lgScroll.w, thumbH), 4.0f,
-                          &pal.separator, nullptr, 0);
+            const float reveal = app.m_lgSbAnim.v;
+            if (reveal > 0.01f)
+            {
+                const bool active = app.m_thumbDragging || app.m_hoverId == ID_LOG_SB;
+                const Gdiplus::Color thumb = SbThumbColor((active ? 0.55f : 0.38f) * reveal);
+                const float viewH = L.lgBody.h;
+                const float contentH = shown * rowH;
+                float thumbH = viewH * viewH / contentH;
+                if (thumbH < float(S(28)))
+                    thumbH = float(S(28));
+                const float track = viewH - thumbH;
+                const float thumbY = L.lgBody.y + (app.m_logScroll / maxScroll) * track;
+                ui::RoundRect(g, RectF(L.lgScroll.x, thumbY, L.lgScroll.w, thumbH), 4.0f,
+                              &thumb, nullptr, 0);
+            }
         }
     }
 }
@@ -509,6 +542,7 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
 static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
 {
     const Pal& pal = Palette();
+    App& app = g_app;
 
     ui::Text(g, L"\u8bbe\u7f6e", FTitle, pal.text, // 设置
              RectF(L.pageBox.x, L.pageTop, L.pageBox.w, float(LineH(FTitle))));
@@ -516,8 +550,8 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
     if (L.stAppearance.w > 0)
     {
         Card(g, L.stAppearance, L"\u5916\u89c2"); // 外观
-        ui::Text(g, L"\u4e3b\u9898", FBody, pal.text, RectF(L.stSegThemeLabel.x, L.stSegThemeLabel.y, L.stSegThemeLabel.w, L.stSegThemeLabel.h)); // 主题
-        ui::Text(g, L"\u7a97\u53e3\u6750\u8d28", FBody, pal.text, RectF(L.stSegBackdropLabel.x, L.stSegBackdropLabel.y, L.stSegBackdropLabel.w, L.stSegBackdropLabel.h)); // 窗口材质
+        ui::Text(g, L"\u4e3b\u9898", FBody, pal.text, L.stSegThemeLabel); // 主题
+        ui::Text(g, L"\u7a97\u53e3\u6750\u8d28", FBody, pal.text, L.stSegBackdropLabel); // 窗口材质
         const std::wstring note = L"\u4e91\u6bcd / \u4e9a\u514b\u529b\u4e3a\u7cfb\u7edf\u6750\u8d28\uff08\u9700\u8981 Windows 11 22H2+\uff09\uff1b\u5173\u95ed\u65f6\u4f7f\u7528\u7eaf\u8272\u80cc\u666f"; // 云母 / 亚克力为系统材质…
         ui::Text(g, note, FSmall, pal.text3,
                  RectF(L.stAppearance.x + float(S(18)), L.stAppearance.bottom() - float(S(30)),
@@ -535,11 +569,9 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
         };
         for (int i = 0; i < 3; ++i)
         {
-            ui::Text(g, kLabels[i], FBody, pal.text,
-                     RectF(L.stTglLabel[i].x, L.stTglLabel[i].y + (float(S(44)) - float(LineH(FBody))) / 2,
-                           L.stTglLabel[i].w, float(LineH(FBody))));
+            ui::Text(g, kLabels[i], FBody, pal.text, L.stTglLabel[i]);
             if (i < 2)
-                ui::HLine(g, L.stTglLabel[i].x, L.stTglLabel[i].bottom(),
+                ui::HLine(g, L.stTglLabel[i].x, L.stTglLabel[i].y + float(S(44)),
                           L.stBehavior.w - float(S(36)), pal.separator);
         }
     }
@@ -629,7 +661,127 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
     }
 }
 
+// -------------------------------------------------------------- page body
+
+// Renders the current page (body + registered controls + EDIT field frames)
+// into an arbitrary GDI+ context. The clip/scroll transform is applied here
+// so the transition buffer and the main back buffer share one code path.
+static void PaintPageBody(Gdiplus::Graphics& g, const Layout& L)
+{
+    const Pal& pal = Palette();
+    App& app = g_app;
+
+    const Gdiplus::GraphicsState pageState = g.Save();
+    Gdiplus::RectF viewport = L.pageBox.gp();
+    viewport.Width += float(S(6)); // let card shadows breathe at the right edge
+    g.SetClip(viewport);
+    if (app.m_pageScroll > 0.01f)
+        g.TranslateTransform(0.0f, -app.m_pageScroll);
+
+    switch (app.m_page)
+    {
+    case PgOverview: PaintOverview(g, L); break;
+    case PgInject: PaintInject(g, L); break;
+    case PgLogs: PaintLogs(g, L); break;
+    case PgSettings: PaintSettings(g, L); break;
+    case PgAbout: PaintAbout(g, L); break;
+    default: break;
+    }
+
+    // registered controls live on top of the page bodies
+    for (const BtnDef& b : L.btns)
+        ui::Button(g, b.r, b.label, b.style, HoverTOf(b.id), PressedOf(b.id), b.enabled,
+                   b.danger);
+    for (const RowDef& row : L.rows)
+        ui::PathRow(g, row.r, row.text, row.icon, HoverTOf(row.id), row.alert);
+    for (const SegDef& seg : L.segs)
+    {
+        if (seg.id == ID_SEG_LOGFILTER)
+            continue; // painted with the logs page
+        int hoverItem = -1;
+        float hoverFade = 0;
+        if (app.m_hoverId / 100 == seg.id && app.m_hoverId % 100 >= 1)
+        {
+            hoverItem = app.m_hoverId % 100 - 1;
+            hoverFade = app.HoverT(app.m_hoverId);
+        }
+        ui::Segmented(g, seg.r, seg.items, app.SegT(seg.id, seg.sel), hoverItem, hoverFade,
+                      nullptr);
+    }
+    for (const TglDef& t : L.tgls)
+    {
+        if (t.id == ID_TGL_FOLLOW && app.m_page == PgLogs)
+            continue; // painted with the logs page
+        ui::Toggle(g, t.r, app.KnobT(t.id), app.HoverT(t.id));
+    }
+
+    // EDIT field frames (borderless EDIT children render on top of these)
+    if (app.m_page == PgInject)
+    {
+        auto fieldFrame = [&](const RectF& r, int idx)
+        {
+            const bool invalid = (idx == 1) && app.m_portInvalid;
+            const Gdiplus::Color base = invalid ? pal.danger : pal.fieldBorder;
+            // The focus ring fades in and out with the animation clock.
+            const float f = app.m_editFocusAnim[idx].v;
+            const Gdiplus::Color border = ui::Mix(base, pal.accent, f);
+            const Gdiplus::Color fill = app.m_backdropActive
+                ? ApplyAlpha(pal.cardBg, pal.micaCardAlpha) : pal.cardBg;
+            ui::RoundRect(g, r, 8.0f, &fill, &border, 1.0f + 0.5f * f);
+        };
+        fieldFrame(L.ijEditKw, 0);
+        fieldFrame(L.ijEditPort, 1);
+    }
+
+    g.Restore(pageState);
+}
+
 // ------------------------------------------------------------------ chrome
+
+void App::SnapshotPageContent()
+{
+    // Grab the outgoing view from the back buffer for the crossfade. Must be
+    // called before m_page changes (the buffer still shows the old page).
+    // On failure the snapshot is marked unusable; the transition then simply
+    // fades the new page in from the background.
+    const Layout& L = Lay();
+    RECT rc = {};
+    const bool ok = m_hwnd && GetClientRect(m_hwnd, &rc) && rc.right > 0 && rc.bottom > 0
+                    && s_buf.dc && L.content.w > 2
+                    && L.content.x + int(L.content.w) <= rc.right;
+    if (!ok)
+    {
+        s_snap.w = 0; // invalidate any previous snapshot
+        return;
+    }
+    const int cw = int(L.content.w);
+    s_snap.Ensure(cw, int(rc.bottom));
+    BitBlt(s_snap.dc, 0, 0, cw, int(rc.bottom), s_buf.dc, int(L.content.x), 0, SRCCOPY);
+}
+
+namespace {
+
+void AlphaBlendBuf(HDC dst, int x, int y, const BackBuffer& src, BYTE alpha)
+{
+    if (!src.dc || alpha == 0)
+        return;
+    BLENDFUNCTION bf = {};
+    bf.BlendOp = AC_SRC_OVER;
+    bf.SourceConstantAlpha = alpha;
+    AlphaBlend(dst, x, y, src.w, src.h, src.dc, 0, 0, src.w, src.h, bf);
+}
+
+float EaseOutCubic(float t)
+{
+    if (t < 0)
+        t = 0;
+    if (t > 1)
+        t = 1;
+    const float u = 1.0f - t;
+    return 1.0f - u * u * u;
+}
+
+} // namespace
 
 void App::OnPaint(HDC dc, const RECT&)
 {
@@ -674,11 +826,8 @@ void App::OnPaint(HDC dc, const RECT&)
     // nav items
     for (int i = 0; i < PgCount; ++i)
     {
-        const HoverState hs = (m_pressId == ID_NAV + i) ? HoverState::Press
-                               : (m_hoverId == ID_NAV + i) ? HoverState::Hover
-                                                           : HoverState::None;
         ui::NavItem(g, L.nav[i], PageInfoOf(static_cast<PageId>(i)).icon,
-                    PageInfoOf(static_cast<PageId>(i)).label, m_page == i, hs);
+                    PageInfoOf(static_cast<PageId>(i)).label, m_page == i, HoverTOf(ID_NAV + i));
     }
     // sidebar footer: version
     ui::Text(g, std::wstring(L"v") + AppVersion(), FSmall, pal.text3,
@@ -686,107 +835,112 @@ void App::OnPaint(HDC dc, const RECT&)
 
     // titlebar
     {
+        float tlF[3] = { HoverT(ID_TL_CLOSE), HoverT(ID_TL_MIN), HoverT(ID_TL_MAX) };
+        const float group = tlF[0] > tlF[1] ? (tlF[0] > tlF[2] ? tlF[0] : tlF[2])
+                                            : (tlF[1] > tlF[2] ? tlF[1] : tlF[2]);
         int pressIdx = -1;
         if (m_pressId >= ID_TL_CLOSE && m_pressId <= ID_TL_MAX)
             pressIdx = m_pressId - ID_TL_CLOSE;
-        ui::TrafficLights(g, L.traffic, m_windowActive, m_tlHoverAny, m_tlHoverIdx, pressIdx);
+        ui::TrafficLights(g, L.traffic, m_windowActive, group, tlF, pressIdx);
 
-        if (L.content.w > float(S(420)))
-            ui::Text(g, kAppName, FSmall, pal.text3,
+        // macOS System Settings style: the active pane's name sits centered
+        // in the toolbar (drawn after the crossfade below fades it in).
+        if (L.content.w > float(S(420)) && m_pageAnim.v >= 1.0f)
+            ui::Text(g, PageInfoOf(m_page).label, FSmallSem, pal.text2,
                      RectF(L.content.x, 0, L.content.w, L.titlebar.h), ui::Align::Center);
     }
 
-    // page content: clipped to the content viewport and translated by the
-    // page scroll offset (the logs page never translates; it scrolls inside
-    // its card). Registered controls and the EDIT field frames share the same
-    // transform so hit-testing (layout coords + scroll) stays consistent.
+    // page content: either a straight render or, right after a page switch, a
+    // crossfade between the snapshot of the outgoing page and the fresh one.
+    if (m_pageAnim.v < 1.0f && L.content.w > 2)
     {
-        const Gdiplus::GraphicsState pageState = g.Save();
-        Gdiplus::RectF viewport = L.pageBox.gp();
-        viewport.Width += float(S(4)); // let card shadows breathe
-        g.SetClip(viewport);
-        if (m_pageScroll > 0.01f)
-            g.TranslateTransform(0.0f, -m_pageScroll);
+        const float t = EaseOutCubic(m_pageAnim.v);
+        const int cw = int(L.content.w);
 
-        switch (m_page)
+        // 1) render the incoming page into its own buffer
+        s_newPage.Ensure(cw, H);
         {
-        case PgOverview: PaintOverview(g, L); break;
-        case PgInject: PaintInject(g, L); break;
-        case PgLogs: PaintLogs(g, L); break;
-        case PgSettings: PaintSettings(g, L); break;
-        case PgAbout: PaintAbout(g, L); break;
-        default: break;
+            Gdiplus::Graphics gn(s_newPage.dc);
+            gn.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            gn.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+            gn.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAlias);
+            const Gdiplus::Color base = m_backdropActive
+                ? ApplyAlpha(pal.windowBg, pal.micaWindowAlpha) : pal.windowBg;
+            gn.Clear(base);
+            const Gdiplus::GraphicsState st = gn.Save();
+            gn.TranslateTransform(-L.content.x, 0.0f);
+            PaintPageBody(gn, L);
+            gn.Restore(st);
         }
 
-        // registered controls live on top of the page bodies
-        for (const BtnDef& b : L.btns)
-            ui::Button(g, b.r, b.label, b.style, HoverOf(*this, b.id), b.enabled, b.danger);
-        for (const RowDef& row : L.rows)
-            ui::PathRow(g, row.r, row.text, row.icon, HoverOf(*this, row.id), row.alert);
-        for (const SegDef& seg : L.segs)
-        {
-            if (seg.id == ID_SEG_LOGFILTER)
-                continue; // painted with the logs page
-            int hoverItem = -1;
-            if (m_hoverId / 100 == seg.id && m_hoverId % 100 >= 1)
-                hoverItem = m_hoverId % 100 - 1;
-            ui::Segmented(g, seg.r, seg.items, seg.sel, hoverItem, nullptr);
-        }
-        for (const TglDef& t : L.tgls)
-        {
-            if (t.id == ID_TGL_FOLLOW && m_page == PgLogs)
-                continue; // painted with the logs page
-            ui::Toggle(g, t.r, t.on, HoverOf(*this, t.id));
-        }
+        // 2) rebuild the content area from an opaque base, then blend the
+        //    outgoing (fading up) and incoming (fading in, sliding up) views
+        const Gdiplus::Color contentBase = m_backdropActive
+            ? ApplyAlpha(pal.windowBg, pal.micaWindowAlpha) : pal.windowBg;
+        Gdiplus::SolidBrush cbBrush(contentBase);
+        g.FillRectangle(&cbBrush, Gdiplus::RectF(L.content.x, 0, L.content.w, float(H)));
 
-        // EDIT field frames (borderless EDIT children render on top of these)
-        if (m_page == PgInject)
-        {
-            auto fieldFrame = [&](const RectF& r, int ctrlId)
-            {
-                const bool focused = m_editFocused == ctrlId;
-                const bool invalid = ctrlId == ID_EDIT_PORT && m_portInvalid;
-                Gdiplus::Color border = focused ? ApplyAlpha(pal.accent, 0.8f)
-                                   : invalid ? pal.danger : pal.fieldBorder;
-                const Gdiplus::Color fill = m_backdropActive
-                    ? ApplyAlpha(pal.cardBg, pal.micaCardAlpha) : pal.cardBg;
-                ui::RoundRect(g, r, 8.0f, &fill, &border, focused ? 1.4f : 1.0f);
-            };
-            fieldFrame(L.ijEditKw, ID_EDIT_KEYWORD);
-            fieldFrame(L.ijEditPort, ID_EDIT_PORT);
-        }
+        const float slide = float(S(16));
+        const int dyOld = int(-slide * t + 0.5f);
+        const int dyNew = int(slide * (1.0f - t) + 0.5f);
+        if (s_snap.dc && s_snap.w == cw && s_snap.h == H)
+            AlphaBlendBuf(s_buf.dc, int(L.content.x), dyOld, s_snap, BYTE(255 * (1.0f - t)));
+        AlphaBlendBuf(s_buf.dc, int(L.content.x), dyNew, s_newPage, BYTE(255 * t));
 
-        g.Restore(pageState);
+        // The toolbar title faded out with the old view; fade the new pane's
+        // name in on top of the incoming buffer.
+        if (L.content.w > float(S(420)))
+        {
+            const Gdiplus::Color c(BYTE(255 * t), pal.text2.GetR(), pal.text2.GetG(),
+                                   pal.text2.GetB());
+            ui::Text(g, PageInfoOf(m_page).label, FSmallSem, c,
+                     RectF(L.content.x, 0, L.content.w, L.titlebar.h), ui::Align::Center);
+        }
+    }
+    else
+    {
+        PaintPageBody(g, L);
     }
 
-    // overlay page scrollbar (unscrolled, right of the content column)
+    // overlay page scrollbar (auto-hiding, macOS style, no track)
     if (L.pageMaxScroll > 0 && L.pageThumb.w > 0)
     {
-        const Gdiplus::Color thumb = m_pageThumbDrag ? pal.text3 : pal.separator;
-        ui::RoundRect(g, L.pageThumb, 4.0f, &thumb, nullptr, 0);
+        const float reveal = m_sbAnim.v;
+        if (reveal > 0.01f)
+        {
+            const bool active = m_pageThumbDrag || m_hoverId == ID_PAGE_SB;
+            const Gdiplus::Color thumb = SbThumbColor((active ? 0.55f : 0.38f) * reveal);
+            ui::RoundRect(g, L.pageThumb, 4.0f, &thumb, nullptr, 0);
+        }
     }
 
-    // toast
+    // toast (slides up, holds, fades away)
     if (!m_toastText.empty())
     {
-        const float tw = ui::MeasureText(m_toastText, FBody);
-        const float iconD = float(S(17));
-        const float pw = tw + float(S(52)) + iconD;
-        const float ph = float(S(38));
-        const RectF pill(L.root.w / 2 - pw / 2, L.root.h - float(S(22)) - ph, pw, ph);
-        ui::RoundRect(g, pill, ph / 2, &pal.toastBg, nullptr, 0);
-        const Gdiplus::Color iconColor = m_toastKind == 1 ? pal.success
-                                         : m_toastKind == 2 ? pal.warning
-                                         : m_toastKind == 3 ? pal.danger
-                                                            : pal.accent;
-        const IconKind icon = m_toastKind == 1 ? IconKind::Check
-                              : m_toastKind == 3 ? IconKind::Close
-                              : m_toastKind == 2 ? IconKind::Warn
-                                                 : IconKind::Info;
-        ui::Icon(g, icon, RectF(pill.x + float(S(16)), pill.y + (ph - iconD) / 2, iconD, iconD),
-                 iconColor, 1.6f);
-        ui::Text(g, m_toastText, FBody, pal.toastText,
-                 RectF(pill.x + float(S(40)), pill.y, tw + float(S(8)), ph));
+        const float k = m_toastAnim.v;
+        if (k > 0.005f)
+        {
+            const float tw = ui::MeasureText(m_toastText, FBody);
+            const float iconD = float(S(17));
+            const float pw = tw + float(S(52)) + iconD;
+            const float ph = float(S(38));
+            const float dy = float(S(16)) * (1.0f - k);
+            const RectF pill(L.root.w / 2 - pw / 2, L.root.h - float(S(22)) - ph + dy, pw, ph);
+            const Gdiplus::Color pillBg = FadeKeep(pal.toastBg, k);
+            ui::RoundRect(g, pill, ph / 2, &pillBg, nullptr, 0);
+            const Gdiplus::Color iconColor = m_toastKind == 1 ? pal.success
+                                             : m_toastKind == 2 ? pal.warning
+                                             : m_toastKind == 3 ? pal.danger
+                                                                : pal.accent;
+            const IconKind icon = m_toastKind == 1 ? IconKind::Check
+                                  : m_toastKind == 3 ? IconKind::Close
+                                  : m_toastKind == 2 ? IconKind::Warn
+                                                     : IconKind::Info;
+            ui::Icon(g, icon, RectF(pill.x + float(S(16)), pill.y + (ph - iconD) / 2, iconD, iconD),
+                     iconColor, 1.6f);
+            ui::Text(g, m_toastText, FBody, FadeKeep(pal.toastText, k),
+                     RectF(pill.x + float(S(40)), pill.y, tw + float(S(8)), ph));
+        }
     }
 
     BitBlt(dc, 0, 0, W, H, s_buf.dc, 0, 0, SRCCOPY);

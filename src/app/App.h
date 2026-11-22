@@ -9,6 +9,8 @@
 #include "core/ProxyMonitor.h"
 #include "core/Settings.h"
 
+#include <map>
+
 namespace micp {
 
 // ---------------------------------------------------------------- pages
@@ -56,6 +58,9 @@ enum {
 
     ID_ROW_DLL = 60,
     ID_ROW_LOG = 61,
+
+    ID_PAGE_SB = 90, // overlay scrollbar hit zone (page)
+    ID_LOG_SB = 91,  // overlay scrollbar hit zone (logs card)
 
     ID_EDIT_KEYWORD = 100,
     ID_EDIT_PORT = 101,
@@ -177,8 +182,30 @@ public:
     void OnEditFocus(int ctrlId, bool focused);
     void OnSeqUpdate(bool finished);
     void OnCommand(int id);
-    bool WantsHandCursor() const { return m_hoverId != 0 || m_tlHoverAny; }
+    bool WantsHandCursor() const
+    {
+        if (m_tlHoverAny)
+            return true;
+        return m_hoverId != 0 && m_hoverId != ID_PAGE_SB && m_hoverId != ID_LOG_SB;
+    }
     int HitTestChrome(POINT pt); // WM_NCHITTEST zones beyond HTCLIENT
+
+    // --- animation ---------------------------------------------------------
+    // One eased value per animated property; TickAnimations() moves every
+    // value toward its target and reports whether anything is still moving.
+    struct AnimVal
+    {
+        float v = 0.0f;
+        float target = 0.0f;
+    };
+    float HoverT(int id) const;                    // 0..1 hover fade of a control
+    float KnobT(int id) const;                     // 0..1 switch knob position
+    float SegT(int id, int sel) const;             // segmented thumb position
+    bool TickAnimations(float dt);                 // advance; true while busy
+    void SetHoverTarget(int id, bool on);          // raise/lower a hover fade
+    void PokePageSb();                             // show the page scrollbar
+    void PokeLogSb();                              // show the logs scrollbar
+    void SnapshotPageContent();                    // capture view for crossfade
 
     // actions
     void SwitchPage(PageId page);
@@ -201,6 +228,7 @@ private:
     void ApplyBackdrop();
     void SyncEditsFromSettings();
     void AppendLogLines(const std::vector<std::wstring>& lines);
+    float LogMaxScroll(const Layout& L) const; // logs content height overflow
 
 public:
     bool PassesFilter(const LogEntry& e) const;
@@ -236,6 +264,20 @@ public:
     bool m_tlHoverAny = false;
     int m_tlHoverIdx = -1;
     POINT m_lastMouse{ -1, -1 };
+
+    // animation state (public: the paint pass reads it directly)
+    std::map<int, AnimVal> m_hoverAnims;  // per control id (incl. traffic lights, seg items)
+    std::map<int, AnimVal> m_knobAnims;   // toggle switches (id -> 0..1)
+    std::map<int, AnimVal> m_segAnims;    // segmented thumbs (id -> item pos)
+    AnimVal m_pageAnim;                   // page transition 0..1
+    AnimVal m_toastAnim;                  // toast fade in/out
+    AnimVal m_sbAnim;                     // page scrollbar reveal (auto-hide)
+    AnimVal m_lgSbAnim;                   // logs scrollbar reveal
+    AnimVal m_editFocusAnim[2];           // keyword / port focus rings
+    float m_pageScrollTarget = 0;         // eased wheel scrolling
+    float m_logScrollTarget = 0;
+    ULONGLONG m_sbIdle = 0;               // last page scrollbar activity
+    ULONGLONG m_lgSbIdle = 0;             // last logs scrollbar activity
 
     // injection
     InjectionSequence m_seq;

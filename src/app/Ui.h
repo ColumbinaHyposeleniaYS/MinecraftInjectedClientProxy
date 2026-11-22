@@ -2,6 +2,10 @@
 // Immediate-mode drawing primitives and controls. Everything is rendered with
 // GDI+ into the app's 32bpp back buffer; layout rects are plain structs so the
 // same numbers can be recomputed for hit-testing without a paint pass.
+//
+// Hover feedback is animated by the caller: instead of a discrete HoverState,
+// controls take a 0..1 fade value (plus a pressed flag) so the App animation
+// clock can ease colors in and out like macOS does.
 
 #include "app/Theme.h"
 
@@ -20,7 +24,6 @@ struct RectF
     Gdiplus::RectF gp() const { return Gdiplus::RectF(x, y, w, h); }
 };
 
-enum class HoverState { None, Hover, Press };
 enum class IconKind {
     Gauge, Zap, Doc, Gear, Info, Folder, Check, Close, Warn, Link,
     Refresh, Search, Cube, Terminal, Plug
@@ -37,10 +40,14 @@ void HLine(Gdiplus::Graphics& g, float x, float y, float w, const Gdiplus::Color
 
 enum class Align { Left, Center, Right };
 
-// Single-line text with automatic ellipsis; wraps only when wrap=true.
+// Single-line text. The string is converted to a GraphicsPath so the *ink*
+// (the pixels actually covered by the glyphs) can be centered in the rect -
+// GDI+'s line-box centering leaves CJK faces like Microsoft YaHei visibly
+// off-center. Strings wider than the rect fall back to DrawString with
+// ellipsis trimming. wrap=true uses the classic multi-line path.
 void Text(Gdiplus::Graphics& g, const std::wstring& s, FontId font, const Gdiplus::Color& c,
           const RectF& rc, Align align = Align::Left, bool wrap = false);
-float MeasureText(const std::wstring& s, FontId font); // width in px
+float MeasureText(const std::wstring& s, FontId font); // tight ink width in px
 RectF TextRect(const std::wstring& s, FontId font, const RectF& anchor,
                Align align = Align::Left);
 
@@ -53,34 +60,43 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
 
 // style: 0 = primary (accent fill), 1 = secondary, 2 = ghost (text only),
 // 3 = small secondary (used inline inside rows).
+// hover: 0..1 fade, pressed: mouse is down on the button.
 void Button(Gdiplus::Graphics& g, const RectF& r, const wchar_t* label, int style,
-            HoverState hs, bool enabled, bool danger = false);
+            float hover, bool pressed, bool enabled, bool danger = false);
 
-void Toggle(Gdiplus::Graphics& g, const RectF& r, bool on, HoverState hs);
+// knob: 0..1 animated switch position.
+void Toggle(Gdiplus::Graphics& g, const RectF& r, float knob, float hover);
 
-// Segmented control. Returns the item rects through outRects (size >= items).
+// Segmented control. selPos is a float so the selected thumb can slide
+// between items; hoverItem/hoverFade ease the item highlight.
+// Returns the item rects through outRects (size >= items).
 void Segmented(Gdiplus::Graphics& g, const RectF& r, const std::vector<std::wstring>& items,
-               int sel, int hoverItem, RectF* outRects);
+               float selPos, int hoverItem, float hoverFade, RectF* outRects);
 std::vector<RectF> SegmentedLayout(const RectF& r, size_t items); // shared geometry
 
-// Field-like row: icon + ellipsized value + optional trailing hint color.
+// Field-like row: icon + ellipsized value + trailing chevron.
 void PathRow(Gdiplus::Graphics& g, const RectF& r, const std::wstring& value,
-             IconKind icon, HoverState hs, bool alert);
+             IconKind icon, float hover, bool alert);
 
-// macOS traffic lights. tlHover = any dot hovered (glyphs become visible),
-// hoverIdx = the dot currently under the cursor (-1 none).
+// macOS traffic lights. groupFade eases the glyph reveal when the cursor
+// enters the button group; hoverIdx is the dot under the cursor (-1 none).
 void TrafficLights(Gdiplus::Graphics& g, const RectF r[3], bool windowActive,
-                   bool anyHover, int hoverIdx, int pressIdx);
+                   float groupFade, const float hoverFade[3], int pressIdx);
 
 // Sidebar navigation entry.
 void NavItem(Gdiplus::Graphics& g, const RectF& r, IconKind icon, const wchar_t* label,
-             bool selected, HoverState hs);
+             bool selected, float hover);
 
 // Injection step bullet: state 0 pending, 1 active (spinner), 2 done, 3 error.
 void StepBullet(Gdiplus::Graphics& g, const RectF& r, int state, int index, int spinnerPhase);
 
 // Small colored dot for status lines.
 void StatusDot(Gdiplus::Graphics& g, const RectF& r, const Gdiplus::Color& c);
+
+// --- color helpers ----------------------------------------------------------
+
+Gdiplus::Color WithAlpha(const Gdiplus::Color& c, float alpha01);
+Gdiplus::Color Mix(const Gdiplus::Color& a, const Gdiplus::Color& b, float t);
 
 } // namespace ui
 } // namespace micp

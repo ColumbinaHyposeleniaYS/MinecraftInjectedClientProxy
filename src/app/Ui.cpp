@@ -6,55 +6,22 @@
 namespace micp {
 namespace ui {
 
-// ------------------------------------------------------------ measure gfx
-
-namespace {
-
-struct MeasureCtx
-{
-    HDC dc = nullptr;
-    HBITMAP dib = nullptr;
-    Gdiplus::Graphics* g = nullptr;
-    ~MeasureCtx()
-    {
-        delete g;
-        if (dc)
-        {
-            DeleteDC(dc);
-            dc = nullptr;
-        }
-        if (dib)
-            DeleteObject(dib);
-    }
-};
-
-Gdiplus::Graphics& MeasureGfx()
-{
-    static MeasureCtx ctx;
-    if (!ctx.g)
-    {
-        BITMAPINFO bi = {};
-        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bi.bmiHeader.biWidth = 8;
-        bi.bmiHeader.biHeight = -8;
-        bi.bmiHeader.biPlanes = 1;
-        bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biCompression = BI_RGB;
-        void* bits = nullptr;
-        ctx.dib = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-        ctx.dc = CreateCompatibleDC(nullptr);
-        SelectObject(ctx.dc, ctx.dib);
-        ctx.g = new Gdiplus::Graphics(ctx.dc);
-    }
-    return *ctx.g;
-}
+// ------------------------------------------------------------ color helpers
 
 Gdiplus::Color WithAlpha(const Gdiplus::Color& c, float alpha01)
 {
     return Gdiplus::Color(BYTE(255 * alpha01), c.GetR(), c.GetG(), c.GetB());
 }
 
-} // namespace
+Gdiplus::Color Mix(const Gdiplus::Color& a, const Gdiplus::Color& b, float t)
+{
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    return Gdiplus::Color(BYTE(a.GetA() + (b.GetA() - a.GetA()) * t),
+                          BYTE(a.GetR() + (b.GetR() - a.GetR()) * t),
+                          BYTE(a.GetG() + (b.GetG() - a.GetG()) * t),
+                          BYTE(a.GetB() + (b.GetB() - a.GetB()) * t));
+}
 
 // ------------------------------------------------------------- primitives
 
@@ -91,6 +58,43 @@ void HLine(Gdiplus::Graphics& g, float x, float y, float w, const Gdiplus::Color
     g.FillRectangle(&brush, Gdiplus::RectF(x, y, w, 1.0f));
 }
 
+// ------------------------------------------------------------------- text
+
+namespace {
+
+// Measurement probe: builds the glyph path for a single line at origin (0,0)
+// with near/near alignment and returns its tight ink bounds. The path is only
+// used to locate the ink band inside the font's line box - the string itself
+// is still rasterized by DrawString so semibold weights keep their exact
+// look. Returns false when the face or string is unusable (empty, surrogate
+// pairs) - callers then fall back to plain line-box centering.
+bool ProbeInkBounds(const std::wstring& s, Gdiplus::Font* f, Gdiplus::RectF& ink)
+{
+    if (!f || s.empty())
+        return false;
+    for (wchar_t c : s)
+        if (c >= 0xD800 && c <= 0xDFFF)
+            return false; // surrogate pairs: not handled, use the fallback
+
+    Gdiplus::FontFamily fam;
+    if (f->GetFamily(&fam) != Gdiplus::Ok)
+        return false;
+
+    Gdiplus::StringFormat sf(Gdiplus::StringFormat::GenericDefault());
+    sf.SetAlignment(Gdiplus::StringAlignmentNear);
+    sf.SetLineAlignment(Gdiplus::StringAlignmentNear);
+    sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap
+                      | Gdiplus::StringFormatFlagsNoClip);
+
+    Gdiplus::GraphicsPath path;
+    path.AddString(s.c_str(), -1, &fam, f->GetStyle(), f->GetSize(),
+                   Gdiplus::PointF(0, 0), &sf);
+    path.GetBounds(&ink);
+    return ink.Height > 0.5f;
+}
+
+} // namespace
+
 void Text(Gdiplus::Graphics& g, const std::wstring& s, FontId font, const Gdiplus::Color& c,
           const RectF& rc, Align align, bool wrap)
 {
@@ -110,6 +114,33 @@ void Text(Gdiplus::Graphics& g, const std::wstring& s, FontId font, const Gdiplu
         sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap
                           | Gdiplus::StringFormatFlagsNoClip);
         sf.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+        // Single line: center the actual ink of the glyphs. GDI+ centers the
+        // font's line box, which leaves CJK faces like Microsoft YaHei
+        // visibly off-center. The probe gives the ink center relative to the
+        // line-box top; shifting the draw rect by the difference lands the
+        // ink exactly on the rect's middle.
+        Gdiplus::RectF ink;
+        if (ProbeInkBounds(s, f, ink) && ink.Width <= rc.w)
+        {
+            const float inkMid = ink.GetTop() + ink.Height / 2;
+            float dy = rc.h / 2 - inkMid;
+            // Safety clamp: a misprobed face must never push the line out of
+            // the rect entirely.
+            if (dy > rc.h / 2)
+                dy = rc.h / 2;
+            if (dy < -rc.h / 2)
+                dy = -rc.h / 2;
+            const Gdiplus::RectF shifted(rc.x, rc.y + dy, rc.w, rc.h);
+            Gdiplus::SolidBrush brush(c);
+            sf.SetLineAlignment(Gdiplus::StringAlignmentNear);
+            g.DrawString(s.c_str(), -1, f, shifted.gp(), &sf, &brush);
+            return;
+        }
+        // Too wide (ellipsis kicks in) or unprobeable: plain line-box center.
+        Gdiplus::SolidBrush brush(c);
+        g.DrawString(s.c_str(), -1, f, rc.gp(), &sf, &brush);
+        return;
     }
 
     Gdiplus::SolidBrush brush(c);
@@ -120,16 +151,13 @@ float MeasureText(const std::wstring& s, FontId font)
 {
     if (s.empty())
         return 0;
-    Gdiplus::Graphics& g = MeasureGfx();
     Gdiplus::Font* f = GFont(font, HasCJK(s));
     if (!f)
         return 0;
-    Gdiplus::StringFormat sf(Gdiplus::StringFormat::GenericDefault());
-    sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsNoClip);
-    Gdiplus::RectF box(0, 0, 100000, 100000);
-    Gdiplus::RectF out;
-    g.MeasureString(s.c_str(), -1, f, box, &sf, &out);
-    return out.Width;
+    Gdiplus::RectF ink;
+    if (!ProbeInkBounds(s, f, ink))
+        return 0;
+    return ink.Width;
 }
 
 RectF TextRect(const std::wstring& s, FontId font, const RectF& anchor, Align align)
@@ -219,17 +247,23 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     }
     case IconKind::Gear:
     {
-        Gdiplus::RectF ring(6.2f, 6.2f, 11.6f, 11.6f);
-        g.DrawEllipse(&pen, ring);
+        // Gear: ring plus eight flat-topped teeth (thick radial stubs with
+        // square caps read as gear teeth, round caps made it look like a sun).
+        Gdiplus::RectF ring(5.8f, 5.8f, 12.4f, 12.4f);
+        Gdiplus::Pen tooth(c, strokeW * 2.0f);
+        tooth.SetStartCap(Gdiplus::LineCapFlat);
+        tooth.SetEndCap(Gdiplus::LineCapFlat);
         for (int i = 0; i < 8; ++i)
         {
             const double a = i * 3.14159265358979 / 4.0;
-            const float c1 = 12 + float(9.8f * cos(a));
-            const float s1 = 12 + float(9.8f * sin(a));
-            const float c0 = 12 + float(6.8f * cos(a));
-            const float s0 = 12 + float(6.8f * sin(a));
-            PathLines(g, {{c0, s0}, {c1, s1}}, pen);
+            const float c0 = 12 + float(5.4f * cos(a));
+            const float s0 = 12 + float(5.4f * sin(a));
+            const float c1 = 12 + float(8.6f * cos(a));
+            const float s1 = 12 + float(8.6f * sin(a));
+            PathLines(g, {{c0, s0}, {c1, s1}}, tooth);
         }
+        Gdiplus::Pen ringPen(c, strokeW * 1.35f);
+        g.DrawEllipse(&ringPen, ring);
         break;
     }
     case IconKind::Info:
@@ -323,59 +357,48 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
 
 // ---------------------------------------------------------------- controls
 
-namespace {
-
-Gdiplus::Color MixFill(float normal, float hover, float press, HoverState hs)
-{
-    float a = normal;
-    if (hs == HoverState::Hover)
-        a = hover;
-    else if (hs == HoverState::Press)
-        a = press;
-    return Gdiplus::Color(BYTE(255 * a), 120, 120, 128);
-}
-
-} // namespace
-
 void Button(Gdiplus::Graphics& g, const RectF& r, const wchar_t* label, int style,
-            HoverState hs, bool enabled, bool danger)
+            float hover, bool pressed, bool enabled, bool danger)
 {
     const Pal& pal = Palette();
     const float radius = r.h >= S(34) ? 9.0f : 7.0f;
+    if (hover < 0) hover = 0;
+    if (hover > 1) hover = 1;
 
     Gdiplus::Color fill, textColor;
-    float borderAlpha = 0;
+    const Gdiplus::Color* border = nullptr;
+    Gdiplus::Color borderColor;
 
     if (style == 0) // primary
     {
         fill = pal.accent;
-        if (hs == HoverState::Hover)
-            fill = pal.accentHover;
-        else if (hs == HoverState::Press)
+        fill = Mix(fill, pal.accentHover, hover);
+        if (pressed)
             fill = pal.accentPress;
         textColor = Gdiplus::Color(255, 255, 255);
     }
     else if (style == 2) // ghost
     {
-        fill = (hs == HoverState::None) ? Gdiplus::Color(0, 0, 0, 0)
-                                        : WithAlpha(danger ? pal.danger : pal.text, 0.12f);
+        const Gdiplus::Color ghost = WithAlpha(danger ? pal.danger : pal.text, 0.10f);
+        fill = Mix(Gdiplus::Color(0, 0, 0, 0), ghost, hover);
         textColor = danger ? pal.danger : pal.text;
     }
     else // secondary / small
     {
-        fill = MixFill(IsDark() ? 0.20f : 0.10f, IsDark() ? 0.28f : 0.16f,
-                       IsDark() ? 0.14f : 0.07f, hs);
-        borderAlpha = 0.05f;
-        textColor = danger ? pal.danger : pal.text;
-    }
-
-    Gdiplus::Color borderColor(0, 0, 0, 0);
-    const Gdiplus::Color* border = nullptr;
-    if (borderAlpha > 0)
-    {
-        borderColor = IsDark() ? Gdiplus::Color(BYTE(255 * borderAlpha), 255, 255, 255)
-                               : Gdiplus::Color(BYTE(255 * borderAlpha), 0, 0, 0);
+        const float base = IsDark() ? 0.20f : 0.10f;
+        const float hov = IsDark() ? 0.28f : 0.16f;
+        const float prs = IsDark() ? 0.13f : 0.06f;
+        float a = base;
+        if (pressed)
+            a = prs;
+        else
+            a = base + (hov - base) * hover;
+        fill = Gdiplus::Color(BYTE(255 * a), 120, 120, 128);
+        const float bAlpha = 0.05f + 0.03f * hover;
+        borderColor = IsDark() ? Gdiplus::Color(BYTE(255 * bAlpha), 255, 255, 255)
+                               : Gdiplus::Color(BYTE(255 * bAlpha), 0, 0, 0);
         border = &borderColor;
+        textColor = danger ? pal.danger : pal.text;
     }
 
     if (!enabled)
@@ -390,26 +413,28 @@ void Button(Gdiplus::Graphics& g, const RectF& r, const wchar_t* label, int styl
     Text(g, label, font, labelColor, r, Align::Center);
 }
 
-void Toggle(Gdiplus::Graphics& g, const RectF& r, bool on, HoverState hs)
+void Toggle(Gdiplus::Graphics& g, const RectF& r, float knob, float hover)
 {
     const Pal& pal = Palette();
+    if (knob < 0) knob = 0;
+    if (knob > 1) knob = 1;
+    if (hover < 0) hover = 0;
+    if (hover > 1) hover = 1;
     const float radius = r.h / 2;
 
-    Gdiplus::Color track;
-    if (on)
-        track = (hs == HoverState::None) ? pal.success : WithAlpha(pal.success, 0.85f);
-    else
-        track = IsDark() ? Gdiplus::Color(82, 120, 120, 128)
-                         : Gdiplus::Color(46, 120, 120, 128);
-    if (!on && hs == HoverState::Hover)
-        track = IsDark() ? Gdiplus::Color(100, 120, 120, 128)
-                          : Gdiplus::Color(64, 120, 120, 128);
+    // Track color crossfades with the knob position.
+    const Gdiplus::Color offTrack = IsDark() ? Gdiplus::Color(96, 120, 120, 128)
+                                             : Gdiplus::Color(56, 120, 120, 128);
+    Gdiplus::Color track = Mix(offTrack, pal.success, knob);
+    if (hover > 0)
+        track = Mix(track, WithAlpha(track, 0.82f), hover * 0.6f);
 
     RoundRect(g, r, radius, &track, nullptr, 0);
 
     const float pad = r.h * 0.09f;
     const float thumbD = r.h - pad * 2;
-    const float tx = on ? r.right() - thumbD - pad : r.x + pad;
+    const float travel = r.w - thumbD - pad * 2;
+    const float tx = r.x + pad + travel * knob;
     const Gdiplus::Color thumb(255, 255, 255);
     const Gdiplus::Color thumbBorder(28, 0, 0, 0);
     RoundRect(g, RectF(tx, r.y + pad, thumbD, thumbD), thumbD / 2, &thumb,
@@ -430,31 +455,46 @@ std::vector<RectF> SegmentedLayout(const RectF& r, size_t items)
 }
 
 void Segmented(Gdiplus::Graphics& g, const RectF& r, const std::vector<std::wstring>& items,
-               int sel, int hoverItem, RectF* outRects)
+               float selPos, int hoverItem, float hoverFade, RectF* outRects)
 {
     const std::vector<RectF> layout = SegmentedLayout(r, items.size());
     if (outRects)
         for (size_t i = 0; i < layout.size(); ++i)
             outRects[i] = layout[i];
+    if (layout.empty())
+        return;
+    if (selPos < 0) selPos = 0;
+    if (selPos > float(items.size() - 1)) selPos = float(items.size() - 1);
+    if (hoverFade < 0) hoverFade = 0;
+    if (hoverFade > 1) hoverFade = 1;
 
     const Gdiplus::Color track = IsDark() ? Gdiplus::Color(0xFF2E2E33) : Gdiplus::Color(0xFFE9E9EC);
     RoundRect(g, r, r.h / 2 - 1, &track, nullptr, 0);
 
+    // The selected thumb slides between the item rects (animated selPos).
+    {
+        const int i0 = int(selPos);
+        const int i1 = i0 + 1 < int(layout.size()) ? i0 + 1 : i0;
+        const float t = selPos - float(i0);
+        const float x = layout[size_t(i0)].x + (layout[size_t(i1)].x - layout[size_t(i0)].x) * t;
+        const float w = layout[size_t(i0)].w + (layout[size_t(i1)].w - layout[size_t(i0)].w) * t;
+        RectF thumb = layout[size_t(i0)];
+        thumb.x = x;
+        thumb.w = w;
+        const Gdiplus::Color fill = IsDark() ? Gdiplus::Color(0xFF5B5B60) : Gdiplus::Color(0xFFFFFFFF);
+        const Gdiplus::Color tb = IsDark() ? Gdiplus::Color(16, 255, 255, 255)
+                                           : Gdiplus::Color(16, 0, 0, 0);
+        RoundRect(g, thumb, thumb.h / 2 - 1, &fill, &tb, 1.0f);
+    }
+
     for (size_t i = 0; i < items.size(); ++i)
     {
-        const bool selected = int(i) == sel;
-        if (selected)
+        if (int(i) != int(selPos + 0.5f) && int(i) == hoverItem && hoverFade > 0.01f)
         {
-            const Gdiplus::Color thumb = IsDark() ? Gdiplus::Color(0xFF5B5B60) : Gdiplus::Color(0xFFFFFFFF);
-            const Gdiplus::Color tb = IsDark() ? Gdiplus::Color(16, 255, 255, 255)
-                                               : Gdiplus::Color(16, 0, 0, 0);
-            RoundRect(g, layout[i], layout[i].h / 2 - 1, &thumb, &tb, 1.0f);
-        }
-        else if (int(i) == hoverItem)
-        {
-            const Gdiplus::Color hoverFill(10, 0, 0, 0);
+            const Gdiplus::Color hoverFill(BYTE(255 * 0.05f * hoverFade), 0, 0, 0);
             RoundRect(g, layout[i], layout[i].h / 2 - 1, &hoverFill, nullptr, 0);
         }
+        const bool selected = int(i) == int(selPos + 0.5f);
         const FontId font = r.h <= S(30) ? FSmall : FBodySem;
         Text(g, items[i], font, selected ? Palette().text : Palette().text2,
              layout[i].inset(3), Align::Center);
@@ -462,12 +502,13 @@ void Segmented(Gdiplus::Graphics& g, const RectF& r, const std::vector<std::wstr
 }
 
 void PathRow(Gdiplus::Graphics& g, const RectF& r, const std::wstring& value,
-             IconKind icon, HoverState hs, bool alert)
+             IconKind icon, float hover, bool alert)
 {
     const Pal& pal = Palette();
     Gdiplus::Color border = pal.fieldBorder;
-    if (hs != HoverState::None)
-        border = WithAlpha(pal.accent, 0.65f);
+    if (hover > 0)
+        border = Mix(pal.fieldBorder, WithAlpha(pal.accent, 0.65f),
+                     hover > 1 ? 1 : hover);
     RoundRect(g, r, 8, &pal.fieldBg, &border, 1.0f);
 
     const float pad = S(10);
@@ -488,7 +529,7 @@ void PathRow(Gdiplus::Graphics& g, const RectF& r, const std::wstring& value,
 }
 
 void TrafficLights(Gdiplus::Graphics& g, const RectF r[3], bool windowActive,
-                   bool anyHover, int hoverIdx, int pressIdx)
+                   float groupFade, const float hoverFade[3], int pressIdx)
 {
     const Gdiplus::Color kColors[3] = {
         Gdiplus::Color(255, 255, 95, 86),   // close  #FF5F57
@@ -497,22 +538,36 @@ void TrafficLights(Gdiplus::Graphics& g, const RectF r[3], bool windowActive,
     };
     const Gdiplus::Color inactive = IsDark() ? Gdiplus::Color(255, 82, 82, 88)
                                              : Gdiplus::Color(255, 200, 200, 205);
+    if (groupFade < 0) groupFade = 0;
+    if (groupFade > 1) groupFade = 1;
 
     for (int i = 0; i < 3; ++i)
     {
+        const float hf = hoverFade ? (hoverFade[i] < 0 ? 0 : hoverFade[i] > 1 ? 1 : hoverFade[i]) : 0;
         Gdiplus::Color fill = windowActive ? kColors[i] : inactive;
         if (pressIdx == i && windowActive)
             fill = Gdiplus::Color(225, (fill.GetR() * 3) / 4, (fill.GetG() * 3) / 4, (fill.GetB() * 3) / 4);
+        else if (hf > 0 && windowActive)
+        {
+            // Hover dims the dot slightly (macOS darkens on hover).
+            fill = Gdiplus::Color(255, BYTE(fill.GetR() + (120 - fill.GetR()) * 0.25f * hf),
+                                  BYTE(fill.GetG() + (120 - fill.GetG()) * 0.25f * hf),
+                                  BYTE(fill.GetB() + (120 - fill.GetB()) * 0.25f * hf));
+        }
         Gdiplus::SolidBrush brush(fill);
         g.FillEllipse(&brush, r[i].gp());
+    }
 
-        if (!anyHover)
-            continue;
+    if (groupFade <= 0.01f)
+        return;
 
+    for (int i = 0; i < 3; ++i)
+    {
         const float cx = r[i].x + r[i].w / 2;
         const float cy = r[i].y + r[i].h / 2;
         const float g4 = r[i].w * 0.27f;
-        Gdiplus::Pen pen(Gdiplus::Color(130, 0, 0, 0), 1.4f * (r[i].w / 12.0f));
+        Gdiplus::Pen pen(Gdiplus::Color(BYTE(150 * groupFade), 0, 0, 0),
+                         1.4f * (r[i].w / 12.0f));
         pen.SetStartCap(Gdiplus::LineCapRound);
         pen.SetEndCap(Gdiplus::LineCapRound);
 
@@ -527,7 +582,7 @@ void TrafficLights(Gdiplus::Graphics& g, const RectF r[3], bool windowActive,
         }
         else // max: two triangles
         {
-            Gdiplus::SolidBrush glyph(Gdiplus::Color(130, 0, 0, 0));
+            Gdiplus::SolidBrush glyph(Gdiplus::Color(BYTE(150 * groupFade), 0, 0, 0));
             const float t = g4 * 1.05f;
             Gdiplus::PointF tl[] = {
                 Gdiplus::PointF(cx - t, cy - 0.55f),
@@ -546,13 +601,20 @@ void TrafficLights(Gdiplus::Graphics& g, const RectF r[3], bool windowActive,
 }
 
 void NavItem(Gdiplus::Graphics& g, const RectF& r, IconKind icon, const wchar_t* label,
-             bool selected, HoverState hs)
+             bool selected, float hover)
 {
     const Pal& pal = Palette();
+    if (hover < 0) hover = 0;
+    if (hover > 1) hover = 1;
     if (selected)
+    {
         RoundRect(g, r, 8, &pal.accent, nullptr, 0);
-    else if (hs != HoverState::None)
-        RoundRect(g, r, 8, &pal.hoverFill, nullptr, 0);
+    }
+    else if (hover > 0.01f)
+    {
+        const Gdiplus::Color fill = WithAlpha(pal.hoverFill, hover);
+        RoundRect(g, r, 8, &fill, nullptr, 0);
+    }
 
     const Gdiplus::Color fg = selected ? Gdiplus::Color(255, 255, 255) : pal.text;
     Icon(g, icon, RectF(r.x + S(11), r.y + (r.h - S(19)) / 2, S(19), S(19)), fg, 1.6f);

@@ -1,9 +1,12 @@
 // WinMain: frameless top-level window with a macOS-style chrome.
 //
-// The standard frame is removed via the WM_NCCALCSIZE trick (client area =
-// window rect, resize borders re-implemented through WM_NCHITTEST), the
-// traffic-light buttons live inside the client area, and DWM provides
-// rounded corners, the shadow and the optional Mica/Acrylic backdrop.
+// The window is created WS_POPUP + WS_THICKFRAME: there is no WS_CAPTION at
+// all, so DWM has no caption text/buttons to draw - not even when a Mica or
+// Acrylic backdrop extends the frame over the whole client area (that combo
+// used to paint the native title text back over our chrome). Resize borders
+// are re-implemented through WM_NCHITTEST, the traffic-light buttons live in
+// the client area, and DWM provides rounded corners, the shadow and the
+// optional backdrop.
 
 #include "app/App.h"
 #include "core/Settings.h"
@@ -240,14 +243,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int)
     const int w = st.hasPlacement ? st.winW : defW;
     const int h = st.hasPlacement ? st.winH : defH;
 
-    // macOS chrome only: strip WS_SYSMENU so DWM never draws the native
-    // minimize/maximize/close strip in the top-right corner (it occasionally
-    // reappeared when left in). Shadow, rounded corners and Aero Snap remain
-    // via WS_THICKFRAME; the traffic lights handle close/min/max.
+    // macOS chrome: WS_POPUP means no WS_CAPTION, so DWM can never draw a
+    // native title bar over the custom chrome (even when a Mica/Acrylic
+    // backdrop extends the frame over the client area). WS_THICKFRAME keeps
+    // the DWM shadow, the resize borders and Aero Snap; the min/max boxes
+    // keep the taskbar minimize animation and double-click-to-zoom.
+    // WS_EX_APPWINDOW pins the taskbar button for popup windows.
     // WS_CLIPCHILDREN keeps the parent's repaints from painting over the
     // borderless EDIT children on the inject page.
-    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, kAppName,
-                                (WS_OVERLAPPEDWINDOW & ~WS_SYSMENU) | WS_CLIPCHILDREN,
+    HWND hwnd = CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName, kAppName,
+                                WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX
+                                    | WS_MAXIMIZEBOX | WS_CLIPCHILDREN,
                                 x, y, w, h, nullptr, nullptr, hInstance, nullptr);
     if (!hwnd)
         return 1;
