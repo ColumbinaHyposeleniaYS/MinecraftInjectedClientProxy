@@ -218,9 +218,10 @@ void App::ApplyThemeInternal()
 
     if (m_editBrush)
         DeleteObject(m_editBrush);
-    // The EDIT children sit on cards and get their frame painted by the app,
-    // so their background matches the card surface.
-    const Gdiplus::Color& field = Palette().cardBg;
+    // The EDIT children sit inside the painted field frames (filled with
+    // pal.fieldBg, same as the path rows), so their background matches the
+    // field surface - light theme: white, dark theme: the raised field tone.
+    const Gdiplus::Color& field = Palette().fieldBg;
     m_editBrush = CreateSolidBrush(RGB(field.GetR(), field.GetG(), field.GetB()));
 
     if (auto fn = DwmSetAttr())
@@ -736,13 +737,9 @@ void App::Relayout()
         // the content, no visible track.
         L.pageTrack = RectF(L.content.right() - float(S(15)), L.pageBox.y, float(S(8)),
                             L.pageBox.h);
-        float thumbH = L.pageBox.h * L.pageBox.h / L.pageContentH;
-        if (thumbH < float(S(36)))
-            thumbH = float(S(36));
-        const float track = L.pageTrack.h - thumbH;
-        L.pageThumb = RectF(L.pageTrack.x,
-                            L.pageTrack.y + (m_pageScroll / L.pageMaxScroll) * track,
-                            L.pageTrack.w, thumbH);
+        // Seed the cached pill from the current offset; live consumers
+        // (paint, drag) recompute via PageThumbRect() as the scroll moves.
+        L.pageThumb = PageThumbRect();
     }
 
     // Animated controls get their persistent values seeded once, so knobs
@@ -799,7 +796,13 @@ void App::ApplyEditPlacement()
         // child is therefore only text-tall and vertically centered in the
         // frame; the painted frame around it stays full height.
         const float textH = float(LineH(FBody)) + 2.0f;
-        RectF c(v.x, v.y + (v.h - textH) / 2, v.w, textH);
+        // The child must sit INSIDE the painted frame: the field border (up
+        // to 1.5px, scaled) runs along the rounded edge, and the EDIT's
+        // square opaque background would sit on top of it and punch a hole
+        // through the border's straight sides - leaving only the corner arcs
+        // floating. Inset the child by a safe margin instead.
+        const float inset = float(S(2));
+        RectF c(v.x + inset, v.y + (v.h - textH) / 2, v.w - inset * 2, textH);
         // Clip the child to the scroll viewport so partially scrolled fields
         // don't paint over the toolbar above the page box.
         const float kx0 = c.x > L.pageBox.x ? c.x : L.pageBox.x;
@@ -833,6 +836,26 @@ void App::ClampPageScroll()
         m_pageScroll = 0;
     if (m_pageScroll > m_lay.pageMaxScroll)
         m_pageScroll = m_lay.pageMaxScroll;
+}
+
+RectF App::PageThumbRect() const
+{
+    // Live pill geometry for the page scrollbar. Relayout only runs when the
+    // page geometry changes - NOT when the scroll offset moves (wheel glide,
+    // thumb drag) - so the cached L.pageThumb would stay frozen at the
+    // position it had at the last relayout. Everyone who needs the pill
+    // (paint pass, press/drag hit-testing) asks here instead and gets it
+    // recomputed from the current m_pageScroll.
+    const Layout& L = m_lay;
+    if (L.pageMaxScroll <= 0 || L.pageTrack.w <= 0)
+        return RectF();
+    float thumbH = L.pageBox.h * L.pageBox.h / L.pageContentH;
+    if (thumbH < float(S(36)))
+        thumbH = float(S(36));
+    const float track = L.pageTrack.h - thumbH;
+    return RectF(L.pageTrack.x,
+                 L.pageTrack.y + (m_pageScroll / L.pageMaxScroll) * track,
+                 L.pageTrack.w, thumbH);
 }
 
 POINT App::MapContentPoint(POINT pt) const
@@ -903,9 +926,10 @@ void App::OnMouseMove(POINT pt, bool fromNc)
 
     if (m_pageThumbDrag)
     {
-        if (L.pageMaxScroll > 0 && L.pageThumb.w > 0)
+        const RectF thumb = PageThumbRect();
+        if (L.pageMaxScroll > 0 && thumb.w > 0)
         {
-            const float track = L.pageTrack.h - L.pageThumb.h;
+            const float track = L.pageTrack.h - thumb.h;
             if (track > 0)
             {
                 const float rel = (float(pt.y) - L.pageTrack.y - m_pageThumbGrab) / track;
@@ -1045,12 +1069,13 @@ void App::OnLButtonDown(POINT pt)
     // page scrollbar (overlay at the window's right edge; unscrolled coords)
     if (m_page != PgLogs && L.pageMaxScroll > 0 && L.pageTrack.contains(px, py))
     {
-        m_pageThumbGrab = (py >= L.pageThumb.y && py <= L.pageThumb.bottom())
-            ? py - L.pageThumb.y
-            : L.pageThumb.h / 2;
+        const RectF thumb = PageThumbRect();
+        m_pageThumbGrab = (py >= thumb.y && py <= thumb.bottom())
+            ? py - thumb.y
+            : thumb.h / 2;
         m_pageThumbDrag = true;
         SetCapture(m_hwnd);
-        const float track = L.pageTrack.h - L.pageThumb.h;
+        const float track = L.pageTrack.h - thumb.h;
         if (track > 0)
         {
             const float rel = (py - L.pageTrack.y - m_pageThumbGrab) / track;

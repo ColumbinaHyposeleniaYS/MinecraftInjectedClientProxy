@@ -208,9 +208,15 @@ void Icon(Gdiplus::Graphics& g, IconKind kind, const RectF& box, const Gdiplus::
     if (box.w <= 0 || box.h <= 0)
         return;
     Gdiplus::GraphicsState state = g.Save();
-    // Map the 24x24 design space onto the box.
+    // Map the 24x24 design space onto the box. The mapping is COMPOSED onto
+    // the current world transform (the page-scroll translation among others)
+    // - SetTransform would replace it and pin icons to their unscrolled
+    // positions while the rest of the page scrolls under them.
     Gdiplus::Matrix m(box.w / 24.0f, 0, 0, box.h / 24.0f, box.x, box.y);
-    g.SetTransform(&m);
+    Gdiplus::Matrix cur;
+    g.GetTransform(&cur);
+    cur.Multiply(&m, Gdiplus::MatrixOrderPrepend);
+    g.SetTransform(&cur);
     g.SetPageUnit(Gdiplus::UnitPixel);
 
     // Pen widths are expressed in the 24x24 design space; the world

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(MinecraftInjectedClientProxy
-    VERSION 1.0.1
+    VERSION 1.0.2
     DESCRIPTION "Minecraft 1.20.1 injected client proxy - desktop GUI"
     LANGUAGES C CXX)
 

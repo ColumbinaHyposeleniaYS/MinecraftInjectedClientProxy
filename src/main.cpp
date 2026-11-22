@@ -165,12 +165,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORSTATIC:
     {
-        // Borderless EDIT controls: match the card background; the field
-        // frame is painted by the app. Disabled edits use the muted color.
+        // Borderless EDIT controls: match the painted field surface
+        // (pal.fieldBg, same fill the frames use); the field frame itself is
+        // painted by the app. Disabled edits use the muted text color.
         const HWND ctrl = reinterpret_cast<HWND>(lParam);
         const HDC hdc = reinterpret_cast<HDC>(wParam);
         const Pal& pal = Palette();
-        SetBkColor(hdc, RGB(pal.cardBg.GetR(), pal.cardBg.GetG(), pal.cardBg.GetB()));
+        SetBkColor(hdc, RGB(pal.fieldBg.GetR(), pal.fieldBg.GetG(), pal.fieldBg.GetB()));
         SetTextColor(hdc, IsWindowEnabled(ctrl) ? RGB(pal.text.GetR(), pal.text.GetG(), pal.text.GetB())
                                                 : RGB(pal.text3.GetR(), pal.text3.GetG(), pal.text3.GetB()));
         return reinterpret_cast<LRESULT>(g_app.m_editBrush);

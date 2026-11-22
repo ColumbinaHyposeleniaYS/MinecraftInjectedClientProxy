@@ -206,6 +206,7 @@ public:
     void PokePageSb();                             // show the page scrollbar
     void PokeLogSb();                              // show the logs scrollbar
     void SnapshotPageContent();                    // capture view for crossfade
+    RectF PageThumbRect() const; // live page-scrollbar pill (tracks m_pageScroll)
 
     // actions
     void SwitchPage(PageId page);

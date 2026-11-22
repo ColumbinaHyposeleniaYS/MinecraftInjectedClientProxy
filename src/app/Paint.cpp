@@ -726,8 +726,9 @@ static void PaintPageBody(Gdiplus::Graphics& g, const Layout& L)
             // The focus ring fades in and out with the animation clock.
             const float f = app.m_editFocusAnim[idx].v;
             const Gdiplus::Color border = ui::Mix(base, pal.accent, f);
-            const Gdiplus::Color fill = app.m_backdropActive
-                ? ApplyAlpha(pal.cardBg, pal.micaCardAlpha) : pal.cardBg;
+            // Same field surface as ui::PathRow (the DLL / log-source rows),
+            // so every input in the UI reads as one family.
+            const Gdiplus::Color fill = pal.fieldBg;
             ui::RoundRect(g, r, 8.0f, &fill, &border, 1.0f + 0.5f * f);
         };
         fieldFrame(L.ijEditKw, 0);
@@ -904,14 +905,19 @@ void App::OnPaint(HDC dc, const RECT&)
     }
 
     // overlay page scrollbar (auto-hiding, macOS style, no track)
-    if (L.pageMaxScroll > 0 && L.pageThumb.w > 0)
     {
-        const float reveal = m_sbAnim.v;
-        if (reveal > 0.01f)
+        // Live pill: recomputed from the current scroll offset so it tracks
+        // wheel glides and thumb drags (the cached layout rect would freeze).
+        const RectF pageThumb = PageThumbRect();
+        if (L.pageMaxScroll > 0 && pageThumb.w > 0)
         {
-            const bool active = m_pageThumbDrag || m_hoverId == ID_PAGE_SB;
-            const Gdiplus::Color thumb = SbThumbColor((active ? 0.55f : 0.38f) * reveal);
-            ui::RoundRect(g, L.pageThumb, 4.0f, &thumb, nullptr, 0);
+            const float reveal = m_sbAnim.v;
+            if (reveal > 0.01f)
+            {
+                const bool active = m_pageThumbDrag || m_hoverId == ID_PAGE_SB;
+                const Gdiplus::Color thumb = SbThumbColor((active ? 0.55f : 0.38f) * reveal);
+                ui::RoundRect(g, pageThumb, 4.0f, &thumb, nullptr, 0);
+            }
         }
     }
 
