@@ -134,7 +134,7 @@ void Text(Gdiplus::Graphics& g, const std::wstring& s, FontId font, const Gdiplu
             const Gdiplus::RectF shifted(rc.x, rc.y + dy, rc.w, rc.h);
             Gdiplus::SolidBrush brush(c);
             sf.SetLineAlignment(Gdiplus::StringAlignmentNear);
-            g.DrawString(s.c_str(), -1, f, shifted.gp(), &sf, &brush);
+            g.DrawString(s.c_str(), -1, f, shifted, &sf, &brush);
             return;
         }
         // Too wide (ellipsis kicks in) or unprobeable: plain line-box center.

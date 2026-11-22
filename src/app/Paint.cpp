@@ -2,7 +2,8 @@
 
 #include "core/AppPaths.h"
 
-#include <msimg32.h> // AlphaBlend (page transition crossfade)
+// AlphaBlend for the page-transition crossfade: declared in wingdi.h (pulled
+// in through the windows.h chain); msimg32.lib provides the import.
 
 namespace micp {
 namespace {
