@@ -1,6 +1,7 @@
 #include "core/InjectionSequence.h"
 
 #include "app/Lang.h"
+#include "core/EmbeddedDll.h"
 #include "core/Injector.h"
 #include "core/PortProbe.h"
 #include "core/ProcessFinder.h"
@@ -122,7 +123,13 @@ void InjectionSequence::Run(Config config)
         Publish(p, false);
     }
 
-    const InjectionResult result = Injector::Run(target.pid, config.dllPath);
+    // Fall back to the DLL embedded in this executable when no external
+    // path is configured (settings or default candidates may be empty).
+    std::wstring dllPath = config.dllPath;
+    if (TrimW(dllPath).empty())
+        dllPath = EmbeddedDll::ExtractToTemp();
+
+    const InjectionResult result = Injector::Run(target.pid, dllPath);
 
     if (!result.ok)
     {

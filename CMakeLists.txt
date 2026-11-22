@@ -46,6 +46,7 @@ add_executable(micp WIN32
     src/app/Theme.cpp
     src/app/Ui.cpp
     src/core/AppPaths.cpp
+    src/core/EmbeddedDll.cpp
     src/core/InjectionSequence.cpp
     src/core/Injector.cpp
     src/core/LogTail.cpp
@@ -113,6 +114,23 @@ if(MSVC)
     set_target_properties(aurora PROPERTIES
         OUTPUT_NAME Aurora
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+    # Embed Aurora.dll into the GUI exe as RCDATA (MICP_HAS_EMBEDDED_DLL):
+    # the injector extracts it to %TEMP% when no external DLL is found.
+    # The copy must run before micp's resources are compiled, hence the
+    # explicit target-level dependency.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/aurora_embed.rc"
+        "AURORA_DLL RCDATA \"Aurora.dll\"\n")
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:aurora>" "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll"
+        DEPENDS aurora
+        COMMENT "Copying Aurora.dll for RCDATA embedding")
+    add_custom_target(copy_aurora_dll
+        DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll")
+    add_dependencies(micp copy_aurora_dll)
+    target_sources(micp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/aurora_embed.rc")
+    target_compile_definitions(micp PRIVATE MICP_HAS_EMBEDDED_DLL)
 else()
     message(STATUS "Aurora.dll (proxy core) needs the MSVC toolchain - building the GUI only.")
 endif()

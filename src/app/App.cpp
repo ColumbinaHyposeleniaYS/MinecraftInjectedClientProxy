@@ -2,6 +2,7 @@
 
 #include "app/Lang.h"
 #include "core/AppPaths.h"
+#include "core/EmbeddedDll.h"
 #include "core/Injector.h"
 #include "core/PortProbe.h"
 #include "core/ProcessFinder.h"
@@ -1752,12 +1753,15 @@ void App::OnEditFocus(int ctrlId, bool focused)
 
 std::wstring App::ResolvedDllPath() const
 {
-    if (!m_set.dllPath.empty() && Injector::FileReadable(m_set.dllPath))
+    // An explicitly configured path wins even if it does not exist yet (the
+    // inject sequence reports it); otherwise use the first readable external
+    // candidate. An empty result means "use the embedded Aurora.dll".
+    if (!m_set.dllPath.empty())
         return m_set.dllPath;
     for (const auto& c : AppPaths::DefaultDllCandidates())
         if (Injector::FileReadable(c))
             return c;
-    return m_set.dllPath.empty() ? AppPaths::DefaultDllCandidates().front() : m_set.dllPath;
+    return {};
 }
 
 void App::StartInject()
@@ -1774,12 +1778,16 @@ void App::StartInject()
     m_bannerKind = 0;
     m_bannerText.clear();
 
-    if (!Injector::FileReadable(dll))
+    // The Aurora.dll core is embedded in this executable; an external file
+    // (settings or next to the exe) only overrides it. A missing external DLL
+    // is therefore not fatal - InjectionSequence extracts the embedded copy.
+    if (!dll.empty() && !Injector::FileReadable(dll) &&
+        !EmbeddedDll::Available())
     {
         m_stepState[0] = 3;
         m_stepDetail[0] = dll;
         m_bannerKind = 2;
-        m_bannerText = lang::Tr(lang::Str::TsDllMissingLong); // 未找到代理 DLL，请将 Aurora.dll 放到程序同目录，或在上方选择
+        m_bannerText = lang::Tr(lang::Str::TsDllMissingLong); // 未找到代理 DLL
         SwitchPage(PgInject);
         ShowToast(lang::Tr(lang::Str::OvDllMissing), 3);
         m_layoutDirty = true;

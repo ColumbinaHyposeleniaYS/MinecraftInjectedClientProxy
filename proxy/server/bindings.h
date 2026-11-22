@@ -112,6 +112,15 @@ struct JavaBindings {
     jmethodID mcGetConnectionMid = nullptr;
     jmethodID cplGetConnectionMid = nullptr;
     jmethodID teleportAckId = nullptr;
+
+    // Chat-notify bindings ("proxying on port" message in A's chat).
+    jclass systemChatPacketCls = nullptr;
+    jmethodID systemChatPacketCtor = nullptr;
+    jclass componentCls = nullptr;
+    jmethodID componentLiteralMid = nullptr;
+    jfieldID mcOptionsFid = nullptr;
+    jclass optionsCls = nullptr;
+    jfieldID optionsLanguageFid = nullptr;
 };
 
 } // namespace proxy_server

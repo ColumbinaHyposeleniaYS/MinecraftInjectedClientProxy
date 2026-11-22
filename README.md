@@ -1,6 +1,6 @@
 # Minecraft Injected Client Proxy
 
-Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图形界面**（注入器 / 控制台）+ **Aurora.dll 代理核心**（源码随仓库分发，Release 开箱即用）。
+Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图形界面**（注入器 / 控制台）+ **Aurora.dll 代理核心**（源码随仓库分发，并已内置进 GUI 程序，无需单独携带 DLL）。
 
 **GUI 为原生 Win32 + GDI+ 实现，无任何运行时依赖** —— 不需要 Qt、.NET 或 VC++ 运行库；exe 与 DLL 均静态链接 CRT，解压即用。
 
@@ -45,6 +45,8 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 
 `proxy/sources.txt` 是代理 DLL 的唯一源码清单，新增源文件需在其中登记。
 
+MSVC 构建时 `Aurora.dll` 会作为 RCDATA 资源嵌入 GUI 程序：注入时若程序目录与设置中都没有外部 DLL，会自动提取内置副本使用；外部 DLL 仍可随时覆盖内置版本。
+
 ## 从源码构建
 
 要求：Windows + Visual Studio 2022（或仅 Build Tools）+ CMake 3.21+，x64。
@@ -60,7 +62,7 @@ GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成
 
 ## 使用方法
 
-1. 下载 Release 压缩包并解压到任意目录（包内已含 `Aurora.dll`，无需额外获取）
+1. 下载 Release 压缩包并解压到任意目录（Aurora.dll 代理核心已内置在程序中，无需额外获取）
 2. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
 3. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
 4. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
@@ -73,7 +75,7 @@ GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成
 
 - 仅供注入到 Minecraft 1.20.1 客户端（x64 Java 进程），反射式加载、驻留游戏进程
 - 恢复信号契约：DLL 在目标进程内创建 `MinecraftInjectedClientProxy.Resume.v1.<pid>` 命名事件；GUI 侧同时兼容旧版 `SakuraTools` 前缀
-- 如需替换为自编译版本：把构建好的 `Aurora.dll` 放到仓库根目录，CI 打包时会优先采用根目录副本
+- 如需替换为自编译版本：把构建好的 `Aurora.dll` 放到程序同目录（或在「注入」页指定路径），外部 DLL 优先于内置副本使用
 
 ## 持久化
 

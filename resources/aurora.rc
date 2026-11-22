@@ -1,0 +1,7 @@
+// Embedded proxy core: the MSVC build embeds Aurora.dll into the GUI exe.
+// The file is produced by the copy_aurora_dll custom target, which copies the
+// built aurora target into resources/ before micp's resources are compiled.
+// MinGW builds never define MICP_HAS_EMBEDDED_DLL, so this stays empty there.
+#ifdef MICP_HAS_EMBEDDED_DLL
+AURORA_DLL RCDATA "Aurora.dll"
+#endif

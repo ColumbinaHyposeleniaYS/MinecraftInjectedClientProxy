@@ -1,3 +1,4 @@
+#include "../chat_notify.h"
 #include "internal.h"
 #include "world_snapshot.h"
 
@@ -362,6 +363,7 @@ void completeLogin(JNIEnv* env, jobject hello) {
         return;
     }
     server.clientState.store(ClientState::Play, std::memory_order_release);
+    ChatNotify_NotifyProxyReady(env);
     {
         std::lock_guard<std::mutex> l(server.gateMutex);
         server.clientConnected = true;

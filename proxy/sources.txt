@@ -7,6 +7,8 @@ proxy/classfile.cpp
 proxy/class_edit.cpp
 proxy/trampolines.cpp
 proxy/relay_handler.cpp
+proxy/packet_filter.cpp
+proxy/chat_notify.cpp
 proxy/connection_hook.cpp
 proxy/server/state.cpp
 proxy/server/bindings.cpp

@@ -1,3 +1,4 @@
+#include "../chat_notify.h"
 #include "internal.h"
 #include "mapped_method.h"
 #include "status_response.h"
@@ -530,6 +531,7 @@ bool cacheJavaRefs(JNIEnv* env, jobject mcLoader) {
     cachePlayerPacketBindings(env, mcLoader);
     cacheLoginStatusBindings(env, mcLoader);
     cacheBundleBindings(env, mcLoader);
+    cacheChatNotifyBindings(env, mcLoader);
 
     LogTo("cacheJavaRefs: configureSer=%p send=%p attrProtoFid=%p bundlerFid=%p "
           "protoHS=%p protoLOGIN=%p protoPLAY=%p flowSB=%p pipMid=%p addLast=%p "

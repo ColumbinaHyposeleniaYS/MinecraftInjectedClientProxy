@@ -112,9 +112,9 @@ jobs:
           $changelog = (@($commits) | Select-Object -First 40) -join "`n"
           if (-not $changelog) { $changelog = '- 初始发布' }
           $dllNote = if ('${{ env.bundledDll }}' -eq 'true') {
-            '- `Aurora.dll`（代理核心）已随包附带，与程序同目录即可直接注入'
+            '- `Aurora.dll`（代理核心）已随包附带，与程序同目录即可直接注入（程序本身也已内置代理核心）'
           } else {
-            '- ⚠️ 本次发布未包含 `Aurora.dll`（代理核心）：请自行从源码构建，或在「注入」页手动选择 DLL 路径'
+            '- ℹ️ 代理核心 `Aurora.dll` 已内置在程序中，注入时自动使用；如需外部 DLL 请自行构建并放到程序同目录'
           }
           # NOTE: the here-string body below sits at the script's column 0 after
           # YAML strips the common indentation - required by PowerShell syntax.

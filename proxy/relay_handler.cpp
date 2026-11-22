@@ -3,6 +3,7 @@
 #include "b_server.h"
 #include "classfile.h"
 #include "jni_lookup.h"
+#include "packet_filter.h"
 #include "packet_policy.h"
 #include "random_name.h"
 #include "runtime_gate.h"
@@ -73,6 +74,13 @@ void JNICALL Native_RelayChannelRead(JNIEnv* env, jobject, jobject ctx, jobject 
     // Queue A's application task before mirroring. The main-thread snapshot can
     // then discard earlier deltas without losing packets still awaiting application.
     std::lock_guard<std::recursive_mutex> dispatch(BServer_DispatchMutex());
+    // "Void mode": while B is active, render-only clientbound packets
+    // (chunks, chat, titles, sounds...) are not handed to A, saving its
+    // render/decode cost. B still receives the packet below.
+    if (packet_filter::HideFromA(env, msg, std::string())) {
+        BServer_ForwardToB(env, msg);
+        return;
+    }
     env->CallObjectMethod(ctx, g_relay.netty.fireChannelReadMid, msg);
     if (env->ExceptionCheck())
         env->ExceptionClear();

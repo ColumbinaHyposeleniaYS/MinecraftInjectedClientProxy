@@ -1,4 +1,6 @@
 #include "internal.h"
+#include "../chat_notify.h"
+#include "../packet_filter.h"
 #include "packet_policy.h"
 #include "relay_handler.h"
 #include "status_response.h"
@@ -18,6 +20,11 @@ void routeToA(JNIEnv* env, jobject packet) {
         return;
     }
 
+    // "Void mode": mirrored render-only packets stay off A's screen.
+    if (packet_filter::HideFromA(env, packet, std::string())) {
+        env->DeleteLocalRef(target);
+        return;
+    }
     RelayFilter_MarkBypass(env, packet);
     env->CallVoidMethod(target, server.refs.connectionSendMid, packet);
     if (env->ExceptionCheck())
@@ -380,6 +387,7 @@ void handleClientPacket(JNIEnv* env, jobject ctx, jobject msg) {
                 server.handoff.state() == LoginHandoff::State::Active) {
                 server.clientState.store(ClientState::Play, std::memory_order_release);
                 LogTo("mid-login: B acknowledged world snapshot; control handed to B");
+                ChatNotify_NotifyProxyReady(env);
             }
             return;
         }
