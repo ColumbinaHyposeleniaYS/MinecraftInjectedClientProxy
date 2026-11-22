@@ -125,7 +125,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
     const Pal& pal = Palette();
     App& app = g_app;
 
-    ui::Text(g, lang::Tr(Str::PageOverview), FTitle, pal.text, // 总览
+    ui::Text(g, lang::Tr(lang::Str::PageOverview), FTitle, pal.text, // 总览
              RectF(L.pageBox.x, L.pageTop, L.pageBox.w, float(LineH(FTitle))));
 
     // --- warning card -----------------------------------------------------
@@ -134,10 +134,10 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
         Card(g, L.ovWarn);
         ui::Icon(g, IconKind::Warn, RectF(L.ovWarn.x + float(S(18)), L.ovWarn.y + float(S(26)),
                                           float(S(22)), float(S(22))), pal.warning, 1.6f);
-        ui::Text(g, lang::Tr(Str::OvDllMissing), FBodySem, pal.danger, // 未找到 Aurora.dll
+        ui::Text(g, lang::Tr(lang::Str::OvDllMissing), FBodySem, pal.danger, // 未找到 Aurora.dll
                  RectF(L.ovWarn.x + float(S(52)), L.ovWarn.y + float(S(20)),
                        L.ovWarn.w - float(S(52)) - float(S(140)), float(LineH(FBodySem))));
-        ui::Text(g, lang::Tr(Str::OvDllMissingHint), // 请将代理 DLL 放到程序同目录，或到「注入」页选择文件
+        ui::Text(g, lang::Tr(lang::Str::OvDllMissingHint), // 请将代理 DLL 放到程序同目录，或到「注入」页选择文件
                  FSmall, pal.text2,
                  RectF(L.ovWarn.x + float(S(52)), L.ovWarn.y + float(S(24)) + float(LineH(FBodySem)),
                        L.ovWarn.w - float(S(52)) - float(S(140)), float(LineH(FSmall))));
@@ -157,27 +157,27 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
         Gdiplus::Color dot;
         if (running)
         {
-            headline = lang::Tr(Str::OvStatusInjecting); // 注入进行中…
+            headline = lang::Tr(lang::Str::OvStatusInjecting); // 注入进行中…
             dot = pal.accent;
         }
         else if (listening)
         {
-            headline = lang::Tr(Str::OvStatusRunning); // 代理运行中
+            headline = lang::Tr(lang::Str::OvStatusRunning); // 代理运行中
             dot = pal.success;
         }
         else if (dead)
         {
-            headline = lang::Tr(Str::OvStatusDead); // 目标客户端已退出
+            headline = lang::Tr(lang::Str::OvStatusDead); // 目标客户端已退出
             dot = pal.text3;
         }
         else if (winFound)
         {
-            headline = lang::Tr(Str::OvStatusFound); // 已找到目标窗口
+            headline = lang::Tr(lang::Str::OvStatusFound); // 已找到目标窗口
             dot = pal.accent;
         }
         else
         {
-            headline = lang::Tr(Str::OvStatusWaiting); // 等待目标窗口
+            headline = lang::Tr(lang::Str::OvStatusWaiting); // 等待目标窗口
             dot = pal.text3;
         }
 
@@ -199,17 +199,17 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
 
         std::wstring sub1, sub2;
         if (running)
-            sub1 = lang::Tr(Str::OvSubInjecting); // 正在执行注入流程，可在「注入」页查看进度
+            sub1 = lang::Tr(lang::Str::OvSubInjecting); // 正在执行注入流程，可在「注入」页查看进度
         else if (listening)
-            sub1 = FormatStr(lang::Tr(Str::OvSubRunning), // PID … · … 个 B 客户端已连接 · 监听 …
+            sub1 = FormatStr(lang::Tr(lang::Str::OvSubRunning), // PID … · … 个 B 客户端已连接 · 监听 …
                              app.m_snap.pid, app.m_snap.bConnections, app.m_set.port);
         else if (dead)
-            sub1 = lang::Tr(Str::OvSubDead); // 注入过的客户端进程已退出，代理随之停止
+            sub1 = lang::Tr(lang::Str::OvSubDead); // 注入过的客户端进程已退出，代理随之停止
         else if (winFound)
-            sub1 = FormatStr(lang::Tr(Str::OvSubFound), app.m_snap.windowTitle.c_str(),
+            sub1 = FormatStr(lang::Tr(lang::Str::OvSubFound), app.m_snap.windowTitle.c_str(),
                              app.m_snap.windowPid);
         else
-            sub1 = lang::Tr(Str::OvSubIdle); // 启动 A 客户端并进入目标服务器后，即可一键注入
+            sub1 = lang::Tr(lang::Str::OvSubIdle); // 启动 A 客户端并进入目标服务器后，即可一键注入
         if (app.m_snap.observing && !app.m_snap.windowTitle.empty())
             sub2 = app.m_snap.windowTitle;
 
@@ -222,7 +222,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
                            L.ovStatus.w - float(S(180)), float(LineH(FSmall))));
 
         // session counter at the bottom-left
-        ui::Text(g, FormatStr(lang::Tr(Str::OvSessionOkCount), app.m_okCount), // 本次会话成功注入 N 次
+        ui::Text(g, FormatStr(lang::Tr(lang::Str::OvSessionOkCount), app.m_okCount), // 本次会话成功注入 N 次
                  FSmall, pal.text3,
                  RectF(leftX, L.ovStatus.bottom() - float(S(26)), L.ovStatus.w - float(S(180)),
                        float(LineH(FSmall))));
@@ -231,7 +231,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
     // --- config summary ----------------------------------------------------
     if (L.ovInfo.w > 0)
     {
-        Card(g, L.ovInfo, lang::Tr(Str::OvCurrentConfig)); // 当前配置
+        Card(g, L.ovInfo, lang::Tr(lang::Str::OvCurrentConfig)); // 当前配置
         const float rowY0 = L.ovInfo.y + float(S(24)) + float(LineH(FHead)) + float(S(14));
         const float labelX = L.ovInfo.x + float(S(18));
         const float labelW = float(S(110));
@@ -246,13 +246,13 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
             const wchar_t* stateText;
         };
         Row rows[4] = {};
-        rows[0] = { lang::Tr(Str::OvProxyDll), FileNameOf(app.ResolvedDllPath()), app.m_dllFound, true,
+        rows[0] = { lang::Tr(lang::Str::OvProxyDll), FileNameOf(app.ResolvedDllPath()), app.m_dllFound, true,
                     app.m_dllFound ? pal.success : pal.danger,
-                    app.m_dllFound ? lang::Tr(Str::OvStateFound) : lang::Tr(Str::OvStateNotFound) };
-        rows[1] = { lang::Tr(Str::OvKeywordLabel), app.m_set.keyword, false, false, pal.text, L"" };
-        rows[2] = { lang::Tr(Str::OvPortLabel), std::to_wstring(app.m_set.port) + lang::Tr(Str::OvPortNote), false, false, pal.text, L"" };
-        rows[3] = { lang::Tr(Str::LogSourceCard),
-                     app.m_logSource.empty() ? lang::Tr(Str::OvAutoDetecting) : FileNameOf(app.m_logSource),
+                    app.m_dllFound ? lang::Tr(lang::Str::OvStateFound) : lang::Tr(lang::Str::OvStateNotFound) };
+        rows[1] = { lang::Tr(lang::Str::OvKeywordLabel), app.m_set.keyword, false, false, pal.text, L"" };
+        rows[2] = { lang::Tr(lang::Str::OvPortLabel), std::to_wstring(app.m_set.port) + lang::Tr(lang::Str::OvPortNote), false, false, pal.text, L"" };
+        rows[3] = { lang::Tr(lang::Str::LogSourceCard),
+                     app.m_logSource.empty() ? lang::Tr(lang::Str::OvAutoDetecting) : FileNameOf(app.m_logSource),
                      false, false, pal.text, L"" };
 
         for (int i = 0; i < 4; ++i)
@@ -267,7 +267,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
                      L.ovInfo.w - labelW - float(S(36)) - reserve, float(S(30)));
             const bool emptyValue = TrimW(rows[i].value).empty();
             if (emptyValue)
-                ui::Text(g, lang::Tr(Str::OvNotSet), FSmall, pal.text3, vr, ui::Align::Right); // 未设置
+                ui::Text(g, lang::Tr(lang::Str::OvNotSet), FSmall, pal.text3, vr, ui::Align::Right); // 未设置
             else
                 ui::Text(g, rows[i].value, FBody, emptyValue ? pal.text3 : pal.text, vr,
                          ui::Align::Right);
@@ -284,29 +284,29 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
     // --- connect hint ------------------------------------------------------
     if (L.ovHint.w > 0)
     {
-        Card(g, L.ovHint, lang::Tr(Str::OvHowConnect)); // B 客户端如何连接
+        Card(g, L.ovHint, lang::Tr(lang::Str::OvHowConnect)); // B 客户端如何连接
         const float x = L.ovHint.x + float(S(18));
         const float y0 = L.ovHint.y + float(S(24)) + float(LineH(FHead)) + float(S(14));
         const float w = L.ovHint.w - float(S(36));
 
         ui::Icon(g, IconKind::Plug, RectF(x, y0 + float(S(2)), float(S(18)), float(S(18))),
                  pal.accent, 1.5f);
-        ui::Text(g, FormatStr(lang::Tr(Str::OvSamePc), // 同一台电脑：B 客户端「直接连接」…
+        ui::Text(g, FormatStr(lang::Tr(lang::Str::OvSamePc), // 同一台电脑：B 客户端「直接连接」…
                      app.m_set.port), FBody, pal.text,
                  RectF(x + float(S(28)), y0, w - float(S(28)), float(LineH(FBody))));
 
         std::vector<std::wstring> ips = AppPaths::LanIpAddresses();
         std::wstring lan;
         for (size_t i = 0; i < ips.size() && i < 3; ++i)
-            lan += (i ? lang::Tr(Str::LanIpSep) : L"") + ips[i] + L":" + std::to_wstring(app.m_set.port);
+            lan += (i ? lang::Tr(lang::Str::LanIpSep) : L"") + ips[i] + L":" + std::to_wstring(app.m_set.port);
         const std::wstring line2 = lan.empty()
-            ? lang::Tr(Str::OvLanNoAddr)
-            : lang::Tr(Str::OvLanPrefix) + lan;
+            ? lang::Tr(lang::Str::OvLanNoAddr)
+            : lang::Tr(lang::Str::OvLanPrefix) + lan;
 
         ui::Text(g, line2, FBody, pal.text,
                  RectF(x + float(S(28)), y0 + float(LineH(FBody)) + float(S(6)),
                        w - float(S(28)), float(LineH(FBody))));
-        ui::Text(g, lang::Tr(Str::OvRolesNote), // A 客户端为被注入的一端；…
+        ui::Text(g, lang::Tr(lang::Str::OvRolesNote), // A 客户端为被注入的一端；…
                  FSmall, pal.text3,
                  RectF(x, y0 + 2 * (float(LineH(FBody)) + float(S(6))) + float(S(4)), w,
                        float(LineH(FSmall))));
@@ -318,13 +318,13 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
     const Pal& pal = Palette();
     App& app = g_app;
 
-    ui::Text(g, lang::Tr(Str::PageInject), FTitle, pal.text, // 注入
+    ui::Text(g, lang::Tr(lang::Str::PageInject), FTitle, pal.text, // 注入
              RectF(L.pageBox.x, L.pageTop, L.pageBox.w, float(LineH(FTitle))));
 
     // --- config card -------------------------------------------------------
     if (L.ijConfig.w > 0)
     {
-        Card(g, L.ijConfig, lang::Tr(Str::InjectConfig));
+        Card(g, L.ijConfig, lang::Tr(lang::Str::InjectConfig));
         const float labelX = L.ijConfig.x + float(S(18));
         const float labelW = float(S(96));
 
@@ -339,26 +339,26 @@ static void PaintInject(Gdiplus::Graphics& g, const Layout& L)
                 ui::Text(g, text, FSmall, pal.text3, r, ui::Align::Left, true);
         };
 
-        rowLabel(L.ijRowDll, lang::Tr(Str::OvProxyDll));
-        rowLabel(L.ijRowKw, lang::Tr(Str::OvKeywordLabel));
-        rowLabel(L.ijRowPort, lang::Tr(Str::OvPortLabel));
+        rowLabel(L.ijRowDll, lang::Tr(lang::Str::OvProxyDll));
+        rowLabel(L.ijRowKw, lang::Tr(lang::Str::OvKeywordLabel));
+        rowLabel(L.ijRowPort, lang::Tr(lang::Str::OvPortLabel));
         rowHint(L.ijHintDll, app.m_set.dllPath.empty()
-            ? std::wstring(lang::Tr(Str::IjDllHintAuto)) // 未选择时将自动在程序目录查找 Aurora.dll
-            : std::wstring(lang::Tr(Str::IjDllHintManual))); // 已手动指定 DLL 路径
-        rowHint(L.ijHintKw, std::wstring(lang::Tr(Str::IjKwHint))); // 匹配窗口标题包含此关键字的 Java 进程
-        rowHint(L.ijHintPort, std::wstring(lang::Tr(Str::IjPortHint))); // B 客户端「直接连接」访问此端口
+            ? std::wstring(lang::Tr(lang::Str::IjDllHintAuto)) // 未选择时将自动在程序目录查找 Aurora.dll
+            : std::wstring(lang::Tr(lang::Str::IjDllHintManual))); // 已手动指定 DLL 路径
+        rowHint(L.ijHintKw, std::wstring(lang::Tr(lang::Str::IjKwHint))); // 匹配窗口标题包含此关键字的 Java 进程
+        rowHint(L.ijHintPort, std::wstring(lang::Tr(lang::Str::IjPortHint))); // B 客户端「直接连接」访问此端口
     }
 
     // --- steps card --------------------------------------------------------
     if (L.ijSteps.w > 0)
     {
-        Card(g, L.ijSteps, lang::Tr(Str::InjectProgress));
+        Card(g, L.ijSteps, lang::Tr(lang::Str::InjectProgress));
         // Not static: the pointers follow the active language table.
         const wchar_t* kStepNames[4] = {
-            lang::Tr(Str::StepCheckDll),   // 检查代理 DLL
-            lang::Tr(Str::StepFindWindow), // 定位目标窗口
-            lang::Tr(Str::StepInjectDll),              // 注入 DLL
-            lang::Tr(Str::StepWaitProxy), // 等待代理监听
+            lang::Tr(lang::Str::StepCheckDll),   // 检查代理 DLL
+            lang::Tr(lang::Str::StepFindWindow), // 定位目标窗口
+            lang::Tr(lang::Str::StepInjectDll),              // 注入 DLL
+            lang::Tr(lang::Str::StepWaitProxy), // 等待代理监听
         };
         const Pal& p = pal;
         for (int i = 0; i < 4; ++i)
@@ -436,7 +436,7 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
         ui::Segmented(g, seg.r, seg.items, app.SegT(seg.id, seg.sel), hoverItem, hoverFade,
                       nullptr);
     }
-    ui::Text(g, lang::Tr(Str::AutoScroll), FSmall, pal.text2, // 自动滚动
+    ui::Text(g, lang::Tr(lang::Str::AutoScroll), FSmall, pal.text2, // 自动滚动
              RectF(L.lgTglLabel.x - float(S(4)), L.lgTgl.y - float(S(3)), L.lgTglLabel.w,
                    L.lgTgl.h + float(S(6))), ui::Align::Right);
     for (const TglDef& t : L.tgls)
@@ -450,7 +450,7 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
 
     // head: source + counts
     const std::wstring src = app.m_logSource.empty()
-        ? lang::Tr(Str::AutoDetectingDots) // 自动探测中…
+        ? lang::Tr(lang::Str::AutoDetectingDots) // 自动探测中…
         : app.m_logSource;
     ui::Text(g, src, FMonoSmall, pal.text3,
              RectF(L.lgHead.x + float(S(14)), L.lgHead.y, L.lgHead.w - float(S(28)) - float(S(160)),
@@ -460,8 +460,8 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
         if (app.PassesFilter(e))
             ++shown;
     const std::wstring counts = app.m_filter == LfAll
-        ? FormatStr(lang::Tr(Str::LinesTotal), total) // 共 N 行
-        : FormatStr(lang::Tr(Str::LinesFiltered), shown, total);
+        ? FormatStr(lang::Tr(lang::Str::LinesTotal), total) // 共 N 行
+        : FormatStr(lang::Tr(lang::Str::LinesFiltered), shown, total);
     ui::Text(g, counts, FSmall, pal.text3,
              RectF(L.lgHead.right() - float(S(14)) - float(S(150)), L.lgHead.y, float(S(150)),
                    L.lgHead.h), ui::Align::Right);
@@ -479,7 +479,7 @@ static void PaintLogs(Gdiplus::Graphics& g, const Layout& L)
     {
         ui::Icon(g, IconKind::Terminal,
                  L.lgBody.centered(float(S(34)), float(S(34))), pal.text3, 1.5f);
-        ui::Text(g, lang::Tr(Str::LogsEmpty), FBody, pal.text2, // 暂无日志，等待代理输出…
+        ui::Text(g, lang::Tr(lang::Str::LogsEmpty), FBody, pal.text2, // 暂无日志，等待代理输出…
                  RectF(L.lgBody.x, L.lgBody.y + L.lgBody.h / 2 + float(S(22)), L.lgBody.w,
                        float(LineH(FBody))), ui::Align::Center);
         ui::Text(g, src, FSmall, pal.text3,
@@ -547,16 +547,16 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
     const Pal& pal = Palette();
     App& app = g_app;
 
-    ui::Text(g, lang::Tr(Str::PageSettings), FTitle, pal.text, // 设置
+    ui::Text(g, lang::Tr(lang::Str::PageSettings), FTitle, pal.text, // 设置
              RectF(L.pageBox.x, L.pageTop, L.pageBox.w, float(LineH(FTitle))));
 
     if (L.stAppearance.w > 0)
     {
-        Card(g, L.stAppearance, lang::Tr(Str::Appearance)); // 外观
-        ui::Text(g, lang::Tr(Str::ThemeLabel), FBody, pal.text, L.stSegThemeLabel); // 主题
-        ui::Text(g, lang::Tr(Str::BackdropLabel), FBody, pal.text, L.stSegBackdropLabel); // 窗口材质
+        Card(g, L.stAppearance, lang::Tr(lang::Str::Appearance)); // 外观
+        ui::Text(g, lang::Tr(lang::Str::ThemeLabel), FBody, pal.text, L.stSegThemeLabel); // 主题
+        ui::Text(g, lang::Tr(lang::Str::BackdropLabel), FBody, pal.text, L.stSegBackdropLabel); // 窗口材质
         // Language picker field: rounded box, current endonym, chevron.
-        ui::Text(g, lang::Tr(Str::LanguageLabel), FBody, pal.text, L.stLangLabel); // 语言
+        ui::Text(g, lang::Tr(lang::Str::LanguageLabel), FBody, pal.text, L.stLangLabel); // 语言
         {
             const float hover = app.HoverT(ID_LANG_ROW);
             const Gdiplus::Color border = ui::Mix(pal.fieldBorder, pal.accent, hover * 0.55f);
@@ -583,7 +583,7 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
                           Gdiplus::PointF(cx + s, cy - s / 2));
             }
         }
-        const std::wstring note = lang::Tr(Str::BackdropNote); // 云母 / 亚克力为系统材质…
+        const std::wstring note = lang::Tr(lang::Str::BackdropNote); // 云母 / 亚克力为系统材质…
         ui::Text(g, note, FSmall, pal.text3,
                  RectF(L.stAppearance.x + float(S(18)), L.stAppearance.bottom() - float(S(30)),
                        L.stAppearance.w - float(S(36)), float(S(28))),
@@ -592,12 +592,12 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
 
     if (L.stBehavior.w > 0)
     {
-        Card(g, L.stBehavior, lang::Tr(Str::Behavior)); // 行为
+        Card(g, L.stBehavior, lang::Tr(lang::Str::Behavior)); // 行为
         // Not static: the pointers follow the active language table.
         const wchar_t* kLabels[3] = {
-            lang::Tr(Str::AutoSwitchLabel), // 注入完成后自动跳转日志
-            lang::Tr(Str::ToastDoneLabel), // 注入完成时显示浮窗提示
-            lang::Tr(Str::FollowLogLabel),           // 日志页自动跟随滚动
+            lang::Tr(lang::Str::AutoSwitchLabel), // 注入完成后自动跳转日志
+            lang::Tr(lang::Str::ToastDoneLabel), // 注入完成时显示浮窗提示
+            lang::Tr(lang::Str::FollowLogLabel),           // 日志页自动跟随滚动
         };
         for (int i = 0; i < 3; ++i)
         {
@@ -610,11 +610,11 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
 
     if (L.stLog.w > 0)
     {
-        Card(g, L.stLog, lang::Tr(Str::LogSourceCard)); // 日志来源
+        Card(g, L.stLog, lang::Tr(lang::Str::LogSourceCard)); // 日志来源
         // wrapping hint + settings-file line, stacked without overlap
-        ui::Text(g, lang::Tr(Str::LogSourceHint), // 默认自动探测…；点击上方路径可手动指定文件
+        ui::Text(g, lang::Tr(lang::Str::LogSourceHint), // 默认自动探测…；点击上方路径可手动指定文件
                  FSmall, pal.text3, L.stIniLabel, ui::Align::Left, true);
-        ui::Text(g, lang::Tr(Str::SettingsFileLabel) + AppPaths::SettingsIni(), // 设置文件：…
+        ui::Text(g, lang::Tr(lang::Str::SettingsFileLabel) + AppPaths::SettingsIni(), // 设置文件：…
                  FSmall, pal.text3,
                  RectF(L.stIniLabel.x, L.stIniLabel.bottom() + float(S(4)),
                        L.stLog.w - float(S(36)), float(LineH(FSmall))));
@@ -623,7 +623,7 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
     if (L.stResetCard.w > 0)
     {
         Card(g, L.stResetCard);
-        ui::Text(g, lang::Tr(Str::ResetHint), // 恢复全部默认值…；不影响窗口位置
+        ui::Text(g, lang::Tr(lang::Str::ResetHint), // 恢复全部默认值…；不影响窗口位置
                  FSmall, pal.text2,
                  RectF(L.stResetCard.x + float(S(170)), L.stResetCard.y,
                        L.stResetCard.w - float(S(190)), L.stResetCard.h),
@@ -658,7 +658,7 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
 
     // version pill
     {
-        const std::wstring v = FormatStr(lang::Tr(Str::AbVersionPill), // v… · 原生 Win32 单文件
+        const std::wstring v = FormatStr(lang::Tr(lang::Str::AbVersionPill), // v… · 原生 Win32 单文件
                                          AppVersion());
         const float vw = ui::MeasureText(v, FSmall);
         RectF pill = L.abVersion;
@@ -669,7 +669,7 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
         ui::Text(g, v, FSmall, pal.text2, pill, ui::Align::Center);
     }
 
-    ui::Text(g, lang::Tr(Str::AbTagline), // Minecraft 1.20.1 客户端反向代理 · 注入与管理工具
+    ui::Text(g, lang::Tr(lang::Str::AbTagline), // Minecraft 1.20.1 客户端反向代理 · 注入与管理工具
              FBody, pal.text2, L.abTag, ui::Align::Center);
 
     const float fy = L.abFoot.y + float(S(6));
@@ -680,9 +680,9 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
         bool dim;
     };
     const AboutLine lines[] = {
-        { lang::Tr(Str::AbLine1), false }, // 原生 Win32 / GDI+ · 无任何运行时依赖 · 单文件 exe
-        { lang::Tr(Str::AbLine2), false }, // 代理核心 Aurora.dll 随 Release 附带，与本程序同目录即可使用
-        { lang::Tr(Str::AbLine3), true }, // 仅供学习交流使用，请遵守…
+        { lang::Tr(lang::Str::AbLine1), false }, // 原生 Win32 / GDI+ · 无任何运行时依赖 · 单文件 exe
+        { lang::Tr(lang::Str::AbLine2), false }, // 代理核心 Aurora.dll 随 Release 附带，与本程序同目录即可使用
+        { lang::Tr(lang::Str::AbLine3), true }, // 仅供学习交流使用，请遵守…
     };
     float ly = fy + float(S(16));
     for (const AboutLine& line : lines)

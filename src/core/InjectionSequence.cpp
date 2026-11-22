@@ -89,7 +89,7 @@ void InjectionSequence::Run(Config config)
     {
         Progress p;
         p.state = State::WaitWindow;
-        p.message = lang::Tr(Str::SeqWaitWin);
+        p.message = lang::Tr(lang::Str::SeqWaitWin);
         Publish(p, false);
     }
 
@@ -101,7 +101,7 @@ void InjectionSequence::Run(Config config)
             Progress p;
             p.state = State::Cancelled;
             p.ok = false;
-            p.message = lang::Tr(Str::TsCancelled);
+            p.message = lang::Tr(lang::Str::TsCancelled);
             m_running.store(false);
             Publish(p, true);
             return;
@@ -118,7 +118,7 @@ void InjectionSequence::Run(Config config)
         p.state = State::Injecting;
         p.pid = target.pid;
         p.windowTitle = target.windowTitle;
-        p.message = lang::Tr(Str::SeqInjectingMsg);
+        p.message = lang::Tr(lang::Str::SeqInjectingMsg);
         Publish(p, false);
     }
 
@@ -150,8 +150,8 @@ void InjectionSequence::Run(Config config)
             p.ok = true;
             p.resumed = result.resumed;
             p.message = result.resumed
-                ? FormatStr(lang::Tr(Str::SeqResumed), unsigned(config.port))
-                : FormatStr(lang::Tr(Str::SeqDoneMsg), unsigned(config.port));
+                ? FormatStr(lang::Tr(lang::Str::SeqResumed), unsigned(config.port))
+                : FormatStr(lang::Tr(lang::Str::SeqDoneMsg), unsigned(config.port));
             m_running.store(false);
             Publish(p, true);
             return;
@@ -168,7 +168,7 @@ void InjectionSequence::Run(Config config)
             p.windowTitle = target.windowTitle;
             p.waitMs = elapsed;
             p.waitTotal = kWaitPortTimeoutMs;
-            p.message = FormatStr(lang::Tr(Str::SeqWaitPort), unsigned(config.port));
+            p.message = FormatStr(lang::Tr(lang::Str::SeqWaitPort), unsigned(config.port));
             Publish(p, false);
         }
     }
@@ -180,7 +180,7 @@ void InjectionSequence::Run(Config config)
         p.pid = target.pid;
         p.windowTitle = target.windowTitle;
         p.ok = false;
-        p.message = lang::Tr(Str::TsCancelled);
+        p.message = lang::Tr(lang::Str::TsCancelled);
         m_running.store(false);
         Publish(p, true);
         return;
@@ -192,7 +192,7 @@ void InjectionSequence::Run(Config config)
     p.windowTitle = target.windowTitle;
     p.ok = false;
     p.resumed = result.resumed;
-    p.message = FormatStr(lang::Tr(Str::SeqPortTimeout),
+    p.message = FormatStr(lang::Tr(lang::Str::SeqPortTimeout),
                           kWaitPortTimeoutMs / 1000, unsigned(config.port));
     m_running.store(false);
     Publish(p, true);

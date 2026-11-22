@@ -12,27 +12,27 @@ std::wstring TranslateEngineMessage(const std::string& raw, uint32_t winError)
     auto has = [&raw](const char* needle) { return raw.find(needle) != std::string::npos; };
 
     if (has("Failed to open the DLL file"))
-        return lang::Tr(Str::ErrOpenDll);
+        return lang::Tr(lang::Str::ErrOpenDll);
     if (has("Failed to get the DLL file size"))
-        return lang::Tr(Str::ErrDllSize);
+        return lang::Tr(lang::Str::ErrDllSize);
     if (has("Failed to read the DLL file"))
-        return lang::Tr(Str::ErrDllRead);
+        return lang::Tr(lang::Str::ErrDllRead);
     if (has("Failed to open the target process"))
-        return lang::Tr(Str::ErrOpenProc);
+        return lang::Tr(lang::Str::ErrOpenProc);
     if (has("Failed to inject the DLL"))
-        return FormatStr(lang::Tr(Str::ErrInjectFail), winError);
+        return FormatStr(lang::Tr(lang::Str::ErrInjectFail), winError);
     if (has("Could not signal resident proxy"))
-        return FormatStr(lang::Tr(Str::ErrResumeFail), winError);
+        return FormatStr(lang::Tr(lang::Str::ErrResumeFail), winError);
     if (has("Reactivation requested"))
-        return lang::Tr(Str::ErrResumeInfo);
+        return lang::Tr(lang::Str::ErrResumeInfo);
     if (has("Injected the DLL"))
-        return lang::Tr(Str::ErrInjectOk);
+        return lang::Tr(lang::Str::ErrInjectOk);
     if (!raw.empty())
     {
         std::wstring wide(raw.begin(), raw.end());
         return wide;
     }
-    return lang::Tr(Str::ErrUnknown);
+    return lang::Tr(lang::Str::ErrUnknown);
 }
 
 } // namespace
@@ -53,7 +53,7 @@ InjectionResult Run(DWORD pid, const std::wstring& dllPath)
 
     if (!FileReadable(dllPath))
     {
-        result.message = FormatStr(lang::Tr(Str::ErrDllNotFound), dllPath.c_str());
+        result.message = FormatStr(lang::Tr(lang::Str::ErrDllNotFound), dllPath.c_str());
         return result;
     }
 
@@ -71,7 +71,7 @@ InjectionResult Run(DWORD pid, const std::wstring& dllPath)
     }
     if (ansiPath.empty())
     {
-        result.message = lang::Tr(Str::ErrPathConv);
+        result.message = lang::Tr(lang::Str::ErrPathConv);
         return result;
     }
 

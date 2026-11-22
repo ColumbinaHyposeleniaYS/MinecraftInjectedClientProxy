@@ -33,11 +33,11 @@ PageInfo kPages[PgCount] = {
 
 const PageInfo& PageInfoOf(PageId page)
 {
-    kPages[PgOverview].label = lang::Tr(Str::PageOverview);
-    kPages[PgInject].label = lang::Tr(Str::PageInject);
-    kPages[PgLogs].label = lang::Tr(Str::PageLogs);
-    kPages[PgSettings].label = lang::Tr(Str::PageSettings);
-    kPages[PgAbout].label = lang::Tr(Str::PageAbout);
+    kPages[PgOverview].label = lang::Tr(lang::Str::PageOverview);
+    kPages[PgInject].label = lang::Tr(lang::Str::PageInject);
+    kPages[PgLogs].label = lang::Tr(lang::Str::PageLogs);
+    kPages[PgSettings].label = lang::Tr(lang::Str::PageSettings);
+    kPages[PgAbout].label = lang::Tr(lang::Str::PageAbout);
     return kPages[page];
 }
 
@@ -338,7 +338,7 @@ void App::ApplyBackdrop()
             effective = Backdrop::None;
             m_set.backdrop = Backdrop::None;
             m_dirty = true;
-            ShowToast(lang::Tr(Str::TsBackdropUnsupported), 2); // 当前系统不支持该材质，已自动关闭
+            ShowToast(lang::Tr(lang::Str::TsBackdropUnsupported), 2); // 当前系统不支持该材质，已自动关闭
         }
         else if (DwmSetAttr() && build < 22621)
         {
@@ -440,7 +440,7 @@ void App::Relayout()
             y = L.ovWarn.bottom() + float(S(14));
             BtnDef b;
             b.id = ID_BTN_GOTO_INJECT;
-            b.label = lang::Tr(Str::GoSelect); // 去选择
+            b.label = lang::Tr(lang::Str::GoSelect); // 去选择
             b.style = 3;
             b.r = RectF(L.ovWarn.right() - cardPad - float(S(88)),
                         L.ovWarn.y + (L.ovWarn.h - float(S(28))) / 2, float(S(88)), float(S(28)));
@@ -452,7 +452,7 @@ void App::Relayout()
         {
             BtnDef b;
             b.id = ID_BTN_INJECT;
-            b.label = lang::Tr(Str::OneClickInject); // 一键注入
+            b.label = lang::Tr(lang::Str::OneClickInject); // 一键注入
             b.style = 0;
             b.enabled = !m_seq.IsRunning();
             b.r = RectF(L.ovStatus.right() - cardPad - float(S(128)),
@@ -469,7 +469,7 @@ void App::Relayout()
         {
             BtnDef b;
             b.id = ID_BTN_GOTO_SETTINGS;
-            b.label = lang::Tr(Str::Adjust); // 调整
+            b.label = lang::Tr(lang::Str::Adjust); // 调整
             b.style = 3;
             b.r = RectF(L.ovInfo.right() - cardPad - float(S(64)),
                         L.ovInfo.y + cardPad, float(S(64)), float(S(26)));
@@ -510,7 +510,7 @@ void App::Relayout()
             L.ijBrowse = RectF(L.ijRowDll.right() + float(S(8)), rowY, float(S(80)), fieldH);
             BtnDef b;
             b.id = ID_BTN_BROWSE_DLL;
-            b.label = lang::Tr(Str::Browse); // 浏览…
+            b.label = lang::Tr(lang::Str::Browse); // 浏览…
             b.style = 1;
             b.r = L.ijBrowse;
             L.btns.push_back(b);
@@ -566,15 +566,15 @@ void App::Relayout()
             BtnDef go;
             go.id = ID_BTN_INJECT;
             go.label = m_seq.IsRunning()
-                ? lang::Tr(Str::Injecting) // 注入中…
-                : lang::Tr(Str::StartInject); // 开始注入
+                ? lang::Tr(lang::Str::Injecting) // 注入中…
+                : lang::Tr(lang::Str::StartInject); // 开始注入
             go.style = 0;
             go.enabled = !m_seq.IsRunning();
             go.r = L.ijBtnGo;
             L.btns.push_back(go);
             BtnDef re;
             re.id = ID_BTN_RECHECK;
-            re.label = lang::Tr(Str::Recheck); // 重新检测
+            re.label = lang::Tr(lang::Str::Recheck); // 重新检测
             re.style = 1;
             re.r = L.ijBtnRecheck;
             L.btns.push_back(re);
@@ -582,7 +582,7 @@ void App::Relayout()
             {
                 BtnDef cancel;
                 cancel.id = ID_BTN_CANCEL_INJ;
-                cancel.label = lang::Tr(Str::CancelInject); // 取消注入
+                cancel.label = lang::Tr(lang::Str::CancelInject); // 取消注入
                 cancel.style = 2;
                 cancel.danger = true;
                 cancel.r = L.ijBtnCancel;
@@ -602,7 +602,7 @@ void App::Relayout()
             s.id = ID_SEG_LOGFILTER;
             s.r = L.lgSeg;
             s.sel = m_filter;
-            s.items = {lang::Tr(Str::FilterAll), lang::Tr(Str::FilterInfo), lang::Tr(Str::FilterWarn), lang::Tr(Str::FilterError)}; // 全部/信息/警告/错误
+            s.items = {lang::Tr(lang::Str::FilterAll), lang::Tr(lang::Str::FilterInfo), lang::Tr(lang::Str::FilterWarn), lang::Tr(lang::Str::FilterError)}; // 全部/信息/警告/错误
             L.segs.push_back(s);
         }
 
@@ -615,13 +615,13 @@ void App::Relayout()
         {
             BtnDef clear;
             clear.id = ID_BTN_CLEAR_LOG;
-            clear.label = lang::Tr(Str::Clear); // 清空
+            clear.label = lang::Tr(lang::Str::Clear); // 清空
             clear.style = 1;
             clear.r = L.lgBtnClear;
             L.btns.push_back(clear);
             BtnDef openF;
             openF.id = ID_BTN_OPEN_LOGFILE;
-            openF.label = lang::Tr(Str::OpenFile); // 打开文件
+            openF.label = lang::Tr(lang::Str::OpenFile); // 打开文件
             openF.style = 1;
             openF.r = L.lgBtnOpen;
             L.btns.push_back(openF);
@@ -662,7 +662,7 @@ void App::Relayout()
                 s.id = ID_SEG_THEME;
                 s.r = L.stSegTheme;
                 s.sel = static_cast<int>(m_set.theme);
-                s.items = {lang::Tr(Str::ThemeSystem), lang::Tr(Str::ThemeLight), lang::Tr(Str::ThemeDark)}; // 跟随系统/浅色/深色
+                s.items = {lang::Tr(lang::Str::ThemeSystem), lang::Tr(lang::Str::ThemeLight), lang::Tr(lang::Str::ThemeDark)}; // 跟随系统/浅色/深色
                 L.segs.push_back(s);
             }
             rowY += float(S(46));
@@ -674,7 +674,7 @@ void App::Relayout()
                 s.r = L.stSegBackdrop;
                 s.sel = m_set.backdrop == Backdrop::None ? 0
                        : m_set.backdrop == Backdrop::Mica ? 1 : 2;
-                s.items = {lang::Tr(Str::BackdropOff), lang::Tr(Str::BackdropMica), lang::Tr(Str::BackdropAcrylic)}; // 关闭/云母/亚克力
+                s.items = {lang::Tr(lang::Str::BackdropOff), lang::Tr(lang::Str::BackdropMica), lang::Tr(lang::Str::BackdropAcrylic)}; // 关闭/云母/亚克力
                 L.segs.push_back(s);
             }
             rowY += float(S(46));
@@ -729,13 +729,13 @@ void App::Relayout()
                 row.r = L.stRowLog;
                 row.text = m_set.logPathOverride.empty() ? m_logSource : m_set.logPathOverride;
                 if (TrimW(row.text).empty())
-                    row.text = lang::Tr(Str::AutoDetectPlaceholder); // 自动探测（尚未发现日志）
+                    row.text = lang::Tr(lang::Str::AutoDetectPlaceholder); // 自动探测（尚未发现日志）
                 row.icon = IconKind::Terminal;
                 L.rows.push_back(row);
                 L.stBrowseLog = RectF(L.stRowLog.right() + float(S(8)), rowY, float(S(80)), fieldH);
                 BtnDef b;
                 b.id = ID_BTN_BROWSE_LOG;
-                b.label = lang::Tr(Str::Browse);
+                b.label = lang::Tr(lang::Str::Browse);
                 b.style = 1;
                 b.r = L.stBrowseLog;
                 L.btns.push_back(b);
@@ -753,7 +753,7 @@ void App::Relayout()
                                  float(S(132)), float(S(32)));
             BtnDef b;
             b.id = ID_BTN_RESET;
-            b.label = lang::Tr(Str::ResetDefaults); // 恢复默认设置
+            b.label = lang::Tr(lang::Str::ResetDefaults); // 恢复默认设置
             b.style = 2;
             b.danger = true;
             b.r = L.stBtnReset;
@@ -782,13 +782,13 @@ void App::Relayout()
         {
             BtnDef gh;
             gh.id = ID_BTN_GITHUB;
-            gh.label = lang::Tr(Str::GitHubRepo); // GitHub 仓库
+            gh.label = lang::Tr(lang::Str::GitHubRepo); // GitHub 仓库
             gh.style = 0;
             gh.r = L.abBtnGh;
             L.btns.push_back(gh);
             BtnDef doc;
             doc.id = ID_BTN_ADMIN_RESTART;
-            doc.label = lang::Tr(Str::RunAsAdmin); // 以管理员运行
+            doc.label = lang::Tr(lang::Str::RunAsAdmin); // 以管理员运行
             doc.style = 1;
             doc.r = L.abBtnDoc;
             L.btns.push_back(doc);
@@ -1779,9 +1779,9 @@ void App::StartInject()
         m_stepState[0] = 3;
         m_stepDetail[0] = dll;
         m_bannerKind = 2;
-        m_bannerText = lang::Tr(Str::TsDllMissingLong); // 未找到代理 DLL，请将 Aurora.dll 放到程序同目录，或在上方选择
+        m_bannerText = lang::Tr(lang::Str::TsDllMissingLong); // 未找到代理 DLL，请将 Aurora.dll 放到程序同目录，或在上方选择
         SwitchPage(PgInject);
-        ShowToast(lang::Tr(Str::OvDllMissing), 3);
+        ShowToast(lang::Tr(lang::Str::OvDllMissing), 3);
         m_layoutDirty = true;
         return;
     }
@@ -1797,7 +1797,7 @@ void App::StartInject()
     {
         m_lastSeqPhase = InjectionSequence::State::WaitWindow;
         SwitchPage(PgInject);
-        ShowToast(lang::Tr(Str::TsInjectStarted), 0); // 已开始注入流程
+        ShowToast(lang::Tr(lang::Str::TsInjectStarted), 0); // 已开始注入流程
         m_layoutDirty = true;
     }
 }
@@ -1810,14 +1810,14 @@ void App::RecheckTargets()
     if (t.valid())
     {
         const bool listening = PortProbe::IsListening(t.pid, uint16_t(m_set.port));
-        ShowToast(FormatStr(lang::Tr(Str::TsTargetFmt),
+        ShowToast(FormatStr(lang::Tr(lang::Str::TsTargetFmt),
                             t.windowTitle.c_str(), t.pid,
-                            listening ? lang::Tr(Str::TsListeningSuffix)
+                            listening ? lang::Tr(lang::Str::TsListeningSuffix)
                                       : L""), listening ? 1 : 0);
     }
     else
     {
-        ShowToast(FormatStr(lang::Tr(Str::TsWinNotFound),
+        ShowToast(FormatStr(lang::Tr(lang::Str::TsWinNotFound),
                             m_set.keyword.c_str()), 2);
     }
     m_layoutDirty = true;
@@ -1831,18 +1831,18 @@ void App::OnSeqUpdate(bool finished)
     {
     case InjectionSequence::State::WaitWindow:
         m_stepState[1] = 1;
-        m_stepDetail[1] = FormatStr(lang::Tr(Str::TsWaitingWin),
+        m_stepDetail[1] = FormatStr(lang::Tr(lang::Str::TsWaitingWin),
                                     m_set.keyword.c_str());
         break;
     case InjectionSequence::State::Injecting:
         m_stepState[1] = 2;
-        m_stepDetail[1] = FormatStr(lang::Tr(Str::OvSubFound), p.windowTitle.c_str(), p.pid);
+        m_stepDetail[1] = FormatStr(lang::Tr(lang::Str::OvSubFound), p.windowTitle.c_str(), p.pid);
         m_stepState[2] = 1;
         m_stepDetail[2] = p.message;
         break;
     case InjectionSequence::State::WaitPort:
         m_stepState[2] = 2;
-        m_stepDetail[2] = lang::Tr(Str::TsDllLoaded); // DLL 已加载，等待代理启动
+        m_stepDetail[2] = lang::Tr(lang::Str::TsDllLoaded); // DLL 已加载，等待代理启动
         m_stepState[3] = 1;
         m_stepDetail[3] = FormatStr(L"%.1f / %.0f s", p.waitMs / 1000.0f, p.waitTotal / 1000.0f);
         m_stepProgress = p.waitTotal > 0 ? float(p.waitMs) / float(p.waitTotal) : 0.0f;
@@ -1864,7 +1864,7 @@ void App::OnSeqUpdate(bool finished)
         break;
     case InjectionSequence::State::Cancelled:
         m_bannerKind = 3;
-        m_bannerText = lang::Tr(Str::TsCancelled);
+        m_bannerText = lang::Tr(lang::Str::TsCancelled);
         break;
     default:
         break;
@@ -1977,7 +1977,7 @@ void App::OnCommand(int id)
     else if (id == ID_BTN_CANCEL_INJ)
     {
         m_seq.Cancel();
-        ShowToast(lang::Tr(Str::TsCancelling), 0);
+        ShowToast(lang::Tr(lang::Str::TsCancelling), 0);
     }
     else if (id == ID_BTN_BROWSE_DLL || id == ID_ROW_DLL)
     {
@@ -1999,7 +1999,7 @@ void App::OnCommand(int id)
         if (!m_logSource.empty() && FileExistsW(m_logSource))
             ShellExecuteW(m_hwnd, L"open", L"notepad.exe", m_logSource.c_str(), nullptr, SW_SHOWNORMAL);
         else
-            ShowToast(lang::Tr(Str::TsLogNotExist), 2);
+            ShowToast(lang::Tr(lang::Str::TsLogNotExist), 2);
     }
     else if (id == ID_BTN_BROWSE_LOG || id == ID_ROW_LOG)
     {
@@ -2040,7 +2040,7 @@ void App::OnCommand(int id)
         m_logScroll = 0;
         SaveNow();
         m_layoutDirty = true;
-        ShowToast(lang::Tr(Str::TsResetDone), 1);
+        ShowToast(lang::Tr(lang::Str::TsResetDone), 1);
     }
     else if (id == ID_BTN_GITHUB)
     {
@@ -2065,7 +2065,7 @@ void App::OnCommand(int id)
         if (ShellExecuteExW(&sei))
             PostMessageW(m_hwnd, WM_CLOSE, 0, 0); // orderly exit (saves settings)
         else
-            ShowToast(lang::Tr(Str::TsAdminCancelled), 2); // 已取消管理员重启
+            ShowToast(lang::Tr(lang::Str::TsAdminCancelled), 2); // 已取消管理员重启
     }
 }
 
@@ -2075,10 +2075,10 @@ void App::BrowseDll()
     OPENFILENAMEW ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = m_hwnd;
-    ofn.lpstrFilter = lang::Tr(Str::DlgDllFilter); // 代理 DLL / 所有文件
+    ofn.lpstrFilter = lang::Tr(lang::Str::DlgDllFilter); // 代理 DLL / 所有文件
     ofn.lpstrFile = file;
     ofn.nMaxFile = MICP_ARRLEN(file);
-    ofn.lpstrTitle = lang::Tr(Str::DlgDllTitle);
+    ofn.lpstrTitle = lang::Tr(lang::Str::DlgDllTitle);
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     const std::wstring startDir = AppPaths::AppDir();
     ofn.lpstrInitialDir = startDir.c_str();
@@ -2088,7 +2088,7 @@ void App::BrowseDll()
         m_dllFound = Injector::FileReadable(m_set.dllPath);
         m_dirty = true;
         m_layoutDirty = true;
-        ShowToast(lang::Tr(Str::TsDllChosen), 1);
+        ShowToast(lang::Tr(lang::Str::TsDllChosen), 1);
     }
 }
 
@@ -2098,10 +2098,10 @@ void App::BrowseLog()
     OPENFILENAMEW ofn = {};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = m_hwnd;
-    ofn.lpstrFilter = lang::Tr(Str::DlgLogFilter); // 日志文件 / 所有文件
+    ofn.lpstrFilter = lang::Tr(lang::Str::DlgLogFilter); // 日志文件 / 所有文件
     ofn.lpstrFile = file;
     ofn.nMaxFile = MICP_ARRLEN(file);
-    ofn.lpstrTitle = lang::Tr(Str::DlgLogTitle);
+    ofn.lpstrTitle = lang::Tr(lang::Str::DlgLogTitle);
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     if (GetOpenFileNameW(&ofn))
     {
@@ -2113,7 +2113,7 @@ void App::BrowseLog()
         m_logPinned = true;
         m_dirty = true;
         m_layoutDirty = true;
-        ShowToast(lang::Tr(Str::TsLogSourceChosen), 1);
+        ShowToast(lang::Tr(lang::Str::TsLogSourceChosen), 1);
     }
 }
 
