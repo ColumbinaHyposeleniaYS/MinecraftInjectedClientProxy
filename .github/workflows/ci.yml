@@ -47,7 +47,7 @@ jobs:
       - name: Package portable bundle
         shell: pwsh
         run: |
-          $app = 'MinecraftInjectedClientProxy'
+          $app = 'MinecraftProxy'
           $bundle = "package\$app"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
@@ -76,7 +76,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MinecraftInjectedClientProxy-win64-r${{ github.run_number }}
+          name: MinecraftProxy-win64-r${{ github.run_number }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14

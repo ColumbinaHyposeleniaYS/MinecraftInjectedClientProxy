@@ -60,7 +60,7 @@ jobs:
       - name: Package portable bundle
         shell: pwsh
         run: |
-          $app = 'MinecraftInjectedClientProxy'
+          $app = 'MinecraftProxy'
           $tag = '${{ steps.tag.outputs.tag }}'
           $bundle = "package\$app"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
@@ -123,7 +123,7 @@ jobs:
 
           | 文件 | 说明 |
           | --- | --- |
-          | `MinecraftInjectedClientProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（GUI 单 exe + `Aurora.dll` 代理核心，无任何运行时依赖） |
+          | `MinecraftProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（GUI 单 exe + `Aurora.dll` 代理核心，无任何运行时依赖） |
           | `checksums.sha256` | SHA-256 校验和 |
 
           ## 更新内容 __TAG__
@@ -138,7 +138,7 @@ jobs:
 
           ## 快速上手
 
-          1. 解压到任意目录，运行 `MinecraftInjectedClientProxy.exe`
+          1. 解压到任意目录，运行 `MinecraftProxy.exe`
           2. 启动 A 客户端并进入目标服务器
           3. 在「注入」页点击「开始注入」（默认匹配标题含「布吉岛」的 Java 窗口，可修改）
           4. B 客户端使用「直接连接」访问 `127.0.0.1:25565`

@@ -6,7 +6,7 @@
 
 namespace micp {
 
-const wchar_t* kAppName = L"Minecraft Injected Client Proxy";
+const wchar_t* kAppName = L"MinecraftProxy";
 const wchar_t* kRepoUrl = L"https://github.com/ColumbinaHyposeleniaYS/MinecraftInjectedClientProxy";
 
 #ifndef MICP_APP_VERSION

@@ -51,7 +51,7 @@ Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图�
 ```powershell
 cmake -S . -B build
 cmake --build build --config Release --parallel
-# 产物：build\bin\Release\MinecraftInjectedClientProxy.exe
+# 产物：build\bin\Release\MinecraftProxy.exe
 #      build\bin\Release\Aurora.dll（代理核心，MSVC 工具链时自动构建）
 ```
 

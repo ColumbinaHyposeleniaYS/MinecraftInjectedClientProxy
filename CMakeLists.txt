@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(MinecraftInjectedClientProxy
-    VERSION 1.0.3
+    VERSION 1.0.4
     DESCRIPTION "Minecraft 1.20.1 injected client proxy - desktop GUI"
     LANGUAGES C CXX)
 
@@ -69,7 +69,7 @@ target_link_libraries(micp PRIVATE
     iphlpapi ws2_32 ole32 msimg32) # msimg32: AlphaBlend for page transitions
 
 set_target_properties(micp PROPERTIES
-    OUTPUT_NAME "MinecraftInjectedClientProxy"
+    OUTPUT_NAME "MinecraftProxy"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 if(MSVC)
@@ -121,10 +121,10 @@ if(MSVC)
     add_custom_target(run
         COMMAND "${CMAKE_BINARY_DIR}/bin/Release/$<TARGET_FILE_NAME:micp>"
         DEPENDS micp
-        COMMENT "Launching MinecraftInjectedClientProxy")
+        COMMENT "Launching MinecraftProxy")
 else()
     add_custom_target(run
         COMMAND "${CMAKE_BINARY_DIR}/bin/$<TARGET_FILE_NAME:micp>"
         DEPENDS micp
-        COMMENT "Launching MinecraftInjectedClientProxy")
+        COMMENT "Launching MinecraftProxy")
 endif()
