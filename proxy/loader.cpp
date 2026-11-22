@@ -3,6 +3,7 @@
 #include "relay_handler.h"
 #include "connection_hook.h"
 #include "b_server.h"
+#include "chat_notify.h"
 #include "runtime_gate.h"
 #include "RuntimeControl.h" // resume-event contract shared with the GUI injector (src/core/injectcore)
 
@@ -48,11 +49,14 @@ bool startSession(JNIEnv* env, DeleteKeyEdge& edge) {
     }
     if (connection == LiveConnectionState::NotConnected &&
         !BServer_BlockAMainThreadUntilBConnected(env)) return false;
+    ChatNotify_ResetPaused();
     LogTo("START: active on port 25565; DEL in A suspends the proxy");
     return true;
 }
 
-bool stopSession(JNIEnv* env) {
+bool stopSession(JNIEnv* env, bool userRequested = false) {
+    if (userRequested)
+        ChatNotify_NotifyPaused(env);
     LogTo("STOP: draining native callbacks");
     // Release the render-thread gate before waiting for callbacks that may need it.
     BServer_RequestStop();
@@ -141,7 +145,7 @@ DWORD WINAPI RuntimeThread(LPVOID) {
             ResetEvent(resume);
             requested = false;
             if (env->PushLocalFrame(512) == JNI_OK) {
-                clean = stopSession(env);
+                clean = stopSession(env, /*userRequested=*/true);
                 active = false;
                 env->PopLocalFrame(nullptr);
             } else env->ExceptionClear();

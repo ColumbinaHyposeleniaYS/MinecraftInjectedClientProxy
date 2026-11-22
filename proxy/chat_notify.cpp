@@ -2,6 +2,7 @@
 
 #include "proxy.h"
 #include "relay_handler.h"
+#include "b_server.h"
 #include "server/internal.h"
 #include "server/state.h"
 
@@ -41,6 +42,7 @@ bool sendToA(JNIEnv* env, jobject packet)
 
 
 std::atomic<bool> g_notified{false};
+std::atomic<bool> g_pausedNotified{false};
 
 struct Message {
     const char* lang; // Minecraft language code (lowercase)
@@ -64,22 +66,47 @@ const Message kMessages[] = {
     {"uk_ua", "\u041f\u0440\u043e\u043a\u0441\u0456 \u043f\u0440\u0430\u0446\u044e\u0454 \u043d\u0430 \u043f\u043e\u0440\u0442\u0443 %u"},
 };
 
-const char* PickMessage(const std::string& lang) {
+// "Proxy paused" messages (same language set; no placeholder).
+const Message kPausedMessages[] = {
+    {"en_us", "Proxy paused"},
+    {"zh_cn", "\u4ee3\u7406\u5df2\u6682\u505c"},
+    {"zh_tw", "\u4ee3\u7406\u5df2\u66ab\u505c"},
+    {"ja_jp", "\u30d7\u30ed\u30ad\u30b7\u4e00\u6642\u505c\u6b62\u4e2d"},
+    {"de_de", "Proxy pausiert"},
+    {"nl_nl", "Proxy gepauzeerd"},
+    {"nl_be", "Proxy gepauzeerd"},
+    {"pt_br", "Proxy pausado"},
+    {"pt_pt", "Proxy em pausa"},
+    {"ru_ru", "\u041f\u0440\u043e\u043a\u0441\u0438 \u043f\u0440\u0438\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d"},
+    {"tr_tr", "Proxy duraklatildi"},
+    {"uk_ua", "\u041f\u0440\u043e\u043a\u0441\u0456 \u043f\u0440\u0438\u0437\u0443\u043f\u0438\u043d\u0435\u043d\u043e"},
+};
+
+const char* PickFrom(const Message* table, int count, const std::string& lang,
+                     int zhTwIdx, int zhIdx, int ptIdx, int nlIdx) {
     if (!lang.empty()) {
-        for (const Message& m : kMessages) {
-            if (lang == m.lang)
-                return m.text;
+        for (int i = 0; i < count; ++i) {
+            if (lang == table[i].lang)
+                return table[i].text;
         }
         if (lang.rfind("zh_tw", 0) == 0 || lang.rfind("zh_hk", 0) == 0)
-            return kMessages[2].text;
+            return table[zhTwIdx].text;
         if (lang.rfind("zh", 0) == 0)
-            return kMessages[1].text;
+            return table[zhIdx].text;
         if (lang.rfind("pt", 0) == 0)
-            return kMessages[7].text;
+            return table[ptIdx].text;
         if (lang.rfind("nl", 0) == 0)
-            return kMessages[5].text;
+            return table[nlIdx].text;
     }
-    return kMessages[0].text;
+    return table[0].text;
+}
+
+const char* PickMessage(const std::string& lang) {
+    return PickFrom(kMessages, 12, lang, 2, 1, 7, 5);
+}
+
+const char* PickPausedMessage(const std::string& lang) {
+    return PickFrom(kPausedMessages, 12, lang, 2, 1, 7, 5);
 }
 
 std::string ReadClientLanguage(JNIEnv* env) {
@@ -164,48 +191,71 @@ bool cacheChatNotifyBindings(JNIEnv* env, jobject mcLoader) {
     return ok;
 }
 
-void ChatNotify_NotifyProxyReady(JNIEnv* env) {
-    bool expected = false;
-    if (!g_notified.compare_exchange_strong(expected, true))
-        return;
+// Builds and sends a one-literal system chat packet. Returns false on any
+// failure so callers can retry later.
+bool SendSystemChat(JNIEnv* env, const char* text)
+{
     if (!server.refs.systemChatPacketCls || !server.refs.systemChatPacketCtor ||
-        !server.refs.componentCls || !server.refs.componentLiteralMid) {
-        g_notified.store(false); // retry when bindings appear
-        return;
-    }
+        !server.refs.componentCls || !server.refs.componentLiteralMid)
+        return false;
     if (env->PushLocalFrame(8) != JNI_OK) {
         env->ExceptionClear();
-        g_notified.store(false);
-        return;
+        return false;
     }
-
-    const jint port = kProxyPort;
-    char buffer[160] = {0};
-    std::snprintf(buffer, sizeof(buffer), PickMessage(ReadClientLanguage(env)), static_cast<unsigned>(port));
-
     bool sent = false;
     do {
-        jstring text = env->NewStringUTF(buffer);
-        if (!text || env->ExceptionCheck())
+        jstring str = env->NewStringUTF(text);
+        if (!str || env->ExceptionCheck())
             break;
         jobject component =
-            env->CallStaticObjectMethod(server.refs.componentCls, server.refs.componentLiteralMid, text);
+            env->CallStaticObjectMethod(server.refs.componentCls, server.refs.componentLiteralMid, str);
         if (!component || env->ExceptionCheck())
             break;
         jobject packet = env->NewObject(server.refs.systemChatPacketCls, server.refs.systemChatPacketCtor,
                                         component, JNI_FALSE);
         if (!packet || env->ExceptionCheck())
             break;
-        if (!sendToA(env, packet))
-            break;
-        sent = true;
-        LogTo("chat-notify: ready message sent (port %u)", static_cast<unsigned>(port));
+        sent = sendToA(env, packet);
     } while (false);
     if (env->ExceptionCheck())
         env->ExceptionClear();
     env->PopLocalFrame(nullptr);
-    if (!sent)
-        g_notified.store(false);
+    return sent;
+}
+
+void ChatNotify_NotifyProxyReady(JNIEnv* env) {
+    bool expected = false;
+    if (!g_notified.compare_exchange_strong(expected, true))
+        return;
+
+    const jint port = kProxyPort;
+    char buffer[160] = {0};
+    std::snprintf(buffer, sizeof(buffer), PickMessage(ReadClientLanguage(env)), static_cast<unsigned>(port));
+
+    if (SendSystemChat(env, buffer)) {
+        LogTo("chat-notify: ready message sent (port %u)", static_cast<unsigned>(port));
+        return;
+    }
+    g_notified.store(false); // retry when bindings / connection appear
+}
+
+void ChatNotify_ResetPaused() {
+    g_pausedNotified.store(false);
+}
+
+void ChatNotify_NotifyPaused(JNIEnv* env) {
+    // Only meaningful while a B session was actually running.
+    if (!BServer_IsBActive())
+        return;
+    bool expected = false;
+    if (!g_pausedNotified.compare_exchange_strong(expected, true))
+        return;
+    char buffer[64] = {0};
+    std::snprintf(buffer, sizeof(buffer), "%s", PickPausedMessage(ReadClientLanguage(env)));
+    if (SendSystemChat(env, buffer))
+        LogTo("chat-notify: paused message sent");
+    else
+        g_pausedNotified.store(false);
 }
 
 } // namespace proxy_server

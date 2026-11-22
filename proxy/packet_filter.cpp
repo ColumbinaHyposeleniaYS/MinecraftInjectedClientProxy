@@ -28,10 +28,10 @@ const char* const kHiddenSuffixes[] = {
     "SetScorePacket",                // scoreboard scores
     "SetPlayerTeamPacket",           // team list UI
     "BossEventPacket",               // boss bars
-    "SoundPacket",                   // generic sound events
-    "EntitySoundPacket",             // positional entity sounds
-    "SoundEntityEventPacket",        // entity effect sounds
-    "StopSoundPacket",
+    "SoundPacket",                   // ClientboundSoundPacket (global sound)
+    "SoundEntityPacket",             // ClientboundSoundEntityPacket (positional)
+    "StopSoundPacket",               // stop custom sound
+    "LevelEventPacket",              // generic effect events (break sounds, smoke)
 };
 
 bool EndsWithAny(const std::string& cls) {
