@@ -1,8 +1,9 @@
 #include "chat_notify.h"
 
-#include "internal.h"
 #include "proxy.h"
 #include "relay_handler.h"
+#include "server/internal.h"
+#include "server/state.h"
 
 #include <atomic>
 #include <cstdio>
