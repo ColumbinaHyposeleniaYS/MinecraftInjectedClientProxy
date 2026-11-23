@@ -52,6 +52,8 @@ enum {
     ID_TGL_FOLLOW = 40,
     ID_TGL_AUTOSWITCH = 41,
     ID_TGL_TOASTDONE = 42,
+    ID_TGL_DEBUG = 43,
+    ID_TGL_CLEARLOG = 44,
 
     ID_SEG_THEME = 50,
     ID_SEG_BACKDROP = 51,
@@ -148,7 +150,7 @@ struct Layout
     // settings
     RectF stAppearance, stBehavior, stLog, stResetCard;
     RectF stSegTheme, stSegBackdrop, stSegThemeLabel, stSegBackdropLabel;
-    RectF stTgl[3], stTglLabel[3];
+    RectF stTgl[5], stTglLabel[5];
     RectF stRowLog, stBrowseLog, stBtnReset, stIniLabel;
     RectF stLangRow, stLangLabel, stLangValue; // language picker field
 

@@ -45,6 +45,8 @@ static const wchar_t* const zh_CN[] = {
     /* AutoSwitchLabel    */ L"\u6ce8\u5165\u5b8c\u6210\u540e\u81ea\u52a8\u8df3\u8f6c\u65e5\u5fd7",
     /* ToastDoneLabel     */ L"\u6ce8\u5165\u5b8c\u6210\u65f6\u663e\u793a\u6d6e\u7a97\u63d0\u793a",
     /* FollowLogLabel     */ L"\u65e5\u5fd7\u9875\u81ea\u52a8\u8ddf\u968f\u6eda\u52a8",
+    /* DebugLogLabel      */ L"\u8bb0\u5f55\u4ee3\u7406\u8c03\u8bd5\u65e5\u5fd7",
+    /* ClearLogOnStartLabel */ L"\u542f\u52a8\u65f6\u6e05\u9664\u65e7\u65e5\u5fd7",
     /* LogSourceCard      */ L"\u65e5\u5fd7\u6765\u6e90",
     /* AutoDetectPlaceholder */ L"\u81ea\u52a8\u63a2\u6d4b\uff08\u5c1a\u672a\u53d1\u73b0\u65e5\u5fd7\uff09",
     /* LogSourceHint      */ L"\u9ed8\u8ba4\u81ea\u52a8\u63a2\u6d4b %APPDATA%\\.minecraft\\proxy.log\u3001%TEMP%\\MinecraftProxy.log \u7b49\u4f4d\u7f6e\uff1b\u70b9\u51fb\u4e0a\u65b9\u8def\u5f84\u53ef\u624b\u52a8\u6307\u5b9a\u6587\u4ef6",

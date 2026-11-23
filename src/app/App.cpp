@@ -681,12 +681,14 @@ void App::Relayout()
 
         // 行为
         {
-            const int n = 3;
+            const int n = 5;
             const float h = float(S(24)) + LineH(FHead) + float(S(14)) + n * float(S(44));
             L.stBehavior = RectF(L.pageBox.x, y, L.pageBox.w, h);
             float rowY = L.stBehavior.y + float(S(24)) + LineH(FHead) + float(S(14));
-            const bool on[3] = { m_set.autoSwitchOnDone, m_set.toastOnDone, m_set.followLog };
-            const int ids[3] = { ID_TGL_AUTOSWITCH, ID_TGL_TOASTDONE, ID_TGL_FOLLOW };
+            const bool on[5] = { m_set.autoSwitchOnDone, m_set.toastOnDone, m_set.followLog,
+                                 m_set.debugLog, m_set.clearLogOnStart };
+            const int ids[5] = { ID_TGL_AUTOSWITCH, ID_TGL_TOASTDONE, ID_TGL_FOLLOW,
+                                 ID_TGL_DEBUG, ID_TGL_CLEARLOG };
             for (int i = 0; i < n; ++i)
             {
                 L.stTgl[i] = RectF(L.stBehavior.right() - float(S(18)) - float(S(40)),
@@ -1942,10 +1944,16 @@ void App::ToggleSetting(int id)
         m_set.toastOnDone = !m_set.toastOnDone;
     else if (id == ID_TGL_FOLLOW)
         m_set.followLog = !m_set.followLog;
+    else if (id == ID_TGL_DEBUG)
+        m_set.debugLog = !m_set.debugLog;
+    else if (id == ID_TGL_CLEARLOG)
+        m_set.clearLogOnStart = !m_set.clearLogOnStart;
     // Animate the knob to its new side.
     m_knobAnims[id].target = (id == ID_TGL_AUTOSWITCH ? m_set.autoSwitchOnDone
                           : id == ID_TGL_TOASTDONE ? m_set.toastOnDone
-                                                   : m_set.followLog) ? 1.0f : 0.0f;
+                          : id == ID_TGL_FOLLOW ? m_set.followLog
+                          : id == ID_TGL_DEBUG ? m_set.debugLog
+                                                : m_set.clearLogOnStart) ? 1.0f : 0.0f;
     m_dirty = true;
     m_layoutDirty = true;
     InvalidateRect(m_hwnd, nullptr, FALSE);

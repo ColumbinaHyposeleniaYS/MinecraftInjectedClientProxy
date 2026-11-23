@@ -57,7 +57,14 @@ bool startSession(JNIEnv* env, DeleteKeyEdge& edge) {
 bool stopSession(JNIEnv* env, bool userRequested = false) {
     if (userRequested)
         proxy_server::ChatNotify_NotifyPaused(env);
-    LogTo("STOP: draining native callbacks");
+    // Retry throttle: the runtime thread retries stopSession every second
+    // while callbacks are stuck; log the drain line once per stuck streak
+    // instead of every retry (log spam previously grew the log to gigabytes).
+    static bool drainLogged = false;
+    if (!drainLogged) {
+        LogTo("STOP: draining native callbacks");
+        drainLogged = true;
+    }
     // Release the render-thread gate before waiting for callbacks that may need it.
     BServer_RequestStop();
     if (!g_runtimeGate.stopFor(std::chrono::milliseconds(1000))) {
@@ -68,7 +75,10 @@ bool stopSession(JNIEnv* env, bool userRequested = false) {
     bool unhooked = UninstallConnectionHook(env);
     bool detached = RelayHandler_DetachAll(env);
     stopped = stopped && unhooked && detached;
-    if (stopped) LogTo("STOP: suspended; run the injector again to reactivate");
+    if (stopped) {
+        LogTo("STOP: suspended; run the injector again to reactivate");
+        drainLogged = false;
+    }
     return stopped;
 }
 

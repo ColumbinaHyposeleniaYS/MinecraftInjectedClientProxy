@@ -4,6 +4,33 @@
 #include <cstdio>
 #include <cstring>
 
+// ---------------------------------------------------------------------------
+// Debug-log policy. The GUI writes %APPDATA%\MinecraftInjectedClientProxy\
+// settings.ini; the [logs] section carries two switches:
+//   debug=1        -> LogTo output is written at all (default: off)
+//   clearOnStart=1 -> when debug is on, the previous log is deleted at start
+// Read once, on first use, via the same ANSI API the GUI writes with.
+namespace {
+
+struct DebugLogConfig {
+    bool enabled = false;
+    bool clearOnStart = true;
+};
+
+DebugLogConfig LoadDebugLogConfig() {
+    DebugLogConfig cfg;
+    char ini[MAX_PATH] = {0};
+    const char* appdata = getenv("APPDATA");
+    if (!appdata || strlen(appdata) + 48 >= MAX_PATH) return cfg;
+    lstrcpynA(ini, appdata, MAX_PATH);
+    lstrcatA(ini, "\\MinecraftInjectedClientProxy\\settings.ini");
+    cfg.enabled = GetPrivateProfileIntA("logs", "debug", 0, ini) != 0;
+    cfg.clearOnStart = GetPrivateProfileIntA("logs", "clearOnStart", 1, ini) != 0;
+    return cfg;
+}
+
+} // namespace
+
 JavaVM*   g_vm    = nullptr;
 jvmtiEnv* g_jvmti = nullptr;
 
@@ -22,7 +49,58 @@ void LogTo(const char* fmt, ...) {
     AcquireSRWLockExclusive(&lock);
 
     static HANDLE h = INVALID_HANDLE_VALUE;
+    static char   activePath[MAX_PATH] = {0};
     static bool   tried = false;
+
+    // Debug switch: with logging disabled nothing is written at all, so the
+    // steady-state cost is a single one-shot INI read on the first call.
+    static const DebugLogConfig s_cfg = LoadDebugLogConfig();
+    if (!tried && s_cfg.enabled && s_cfg.clearOnStart) {
+        // Wipe the previous log before the first open. Done under the lock,
+        // before tryOpen below can create/append to it.
+        char buf[MAX_PATH];
+        const char* appdata = getenv("APPDATA");
+        if (appdata && strlen(appdata) + 32 < MAX_PATH) {
+            lstrcpynA(buf, appdata, MAX_PATH);
+            lstrcatA(buf, "\\.minecraft\\proxy.log");
+            DeleteFileA(buf);
+        }
+        char tmp[MAX_PATH];
+        DWORD n = GetTempPathA(MAX_PATH, tmp);
+        if (n > 0 && n < MAX_PATH - 24) {
+            lstrcatA(tmp, "MinecraftProxy.log");
+            DeleteFileA(tmp);
+        }
+        DeleteFileA("C:\\MinecraftProxy.log");
+    }
+    if (!s_cfg.enabled) {
+        ReleaseSRWLockExclusive(&lock);
+        return;
+    }
+
+    // Rotate at kLogMaxBytes: move the current file to <name>.old (previous
+    // .old is discarded) and reopen fresh. Checked per write, so even one
+    // long-lived session cannot grow the log without bound.
+    constexpr long long kLogMaxBytes = 32LL * 1024 * 1024;
+    auto rotateIfNeeded = [&]() {
+        if (h == INVALID_HANDLE_VALUE || !activePath[0])
+            return;
+        LARGE_INTEGER sz{};
+        if (!GetFileSizeEx(h, &sz) || sz.QuadPart <= kLogMaxBytes)
+            return;
+        CloseHandle(h);
+        h = INVALID_HANDLE_VALUE;
+        char oldPath[MAX_PATH];
+        lstrcpynA(oldPath, activePath, MAX_PATH);
+        lstrcatA(oldPath, ".old");
+        DeleteFileA(oldPath);
+        MoveFileA(activePath, oldPath);
+        h = CreateFileA(activePath, FILE_APPEND_DATA,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    };
+    rotateIfNeeded();
+
     if (!tried) {
         tried = true;
 
@@ -40,8 +118,11 @@ void LogTo(const char* fmt, ...) {
                 lstrcpynA(buf, appdata, MAX_PATH);
                 lstrcatA(buf, "\\.minecraft\\proxy.log");
                 h = tryOpen(buf);
+                if (h != INVALID_HANDLE_VALUE) lstrcpynA(activePath, buf, MAX_PATH);
             }
         }
+
+
 
         if (h == INVALID_HANDLE_VALUE) {
             char tmp[MAX_PATH];
@@ -49,11 +130,14 @@ void LogTo(const char* fmt, ...) {
             if (n > 0 && n < MAX_PATH - 24) {
                 lstrcatA(tmp, "MinecraftProxy.log");
                 h = tryOpen(tmp);
+                if (h != INVALID_HANDLE_VALUE) lstrcpynA(activePath, tmp, MAX_PATH);
             }
         }
 
         if (h == INVALID_HANDLE_VALUE) {
             h = tryOpen("C:\\MinecraftProxy.log");
+            if (h != INVALID_HANDLE_VALUE)
+                lstrcpynA(activePath, "C:\\MinecraftProxy.log", MAX_PATH);
         }
     }
 

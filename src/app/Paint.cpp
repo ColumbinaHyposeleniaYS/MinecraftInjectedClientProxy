@@ -591,15 +591,17 @@ static void PaintSettings(Gdiplus::Graphics& g, const Layout& L)
     {
         Card(g, L.stBehavior, lang::Tr(lang::Str::Behavior)); // 行为
         // Not static: the pointers follow the active language table.
-        const wchar_t* kLabels[3] = {
+        const wchar_t* kLabels[5] = {
             lang::Tr(lang::Str::AutoSwitchLabel), // 注入完成后自动跳转日志
             lang::Tr(lang::Str::ToastDoneLabel), // 注入完成时显示浮窗提示
             lang::Tr(lang::Str::FollowLogLabel),           // 日志页自动跟随滚动
+            lang::Tr(lang::Str::DebugLogLabel),            // 记录代理调试日志
+            lang::Tr(lang::Str::ClearLogOnStartLabel),     // 启动时清除旧日志（需先开启调试日志）
         };
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i < 5; ++i)
         {
             ui::Text(g, kLabels[i], FBody, pal.text, L.stTglLabel[i]);
-            if (i < 2)
+            if (i < 4)
                 ui::HLine(g, L.stTglLabel[i].x, L.stTglLabel[i].y + float(S(44)),
                           L.stBehavior.w - float(S(36)), pal.separator);
         }

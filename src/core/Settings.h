@@ -26,6 +26,8 @@ struct SettingsData
 
     std::wstring logPathOverride; // empty -> auto-detect candidates
     bool followLog = true;        // keep the log view pinned to the bottom
+    bool debugLog = false;        // master switch for proxy.log output
+    bool clearLogOnStart = true;  // delete the previous log when debug is on
 
     // window placement (restored on start, saved on close)
     bool hasPlacement = false;

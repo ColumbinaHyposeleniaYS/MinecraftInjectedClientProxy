@@ -71,6 +71,8 @@ SettingsData SettingsStore::Load()
 
     d.logPathOverride = ReadString(kSectionLog, L"pathOverride", L"");
     d.followLog = ReadInt(kSectionLog, L"follow", 1) != 0;
+    d.debugLog = ReadInt(kSectionLog, L"debug", 0) != 0;
+    d.clearLogOnStart = ReadInt(kSectionLog, L"clearOnStart", 1) != 0;
 
     d.winX = ReadInt(kSectionWindow, L"x", 0);
     d.winY = ReadInt(kSectionWindow, L"y", 0);
@@ -94,6 +96,8 @@ void SettingsStore::Save(const SettingsData& d)
     WriteInt(kSectionInject, L"toastOnDone", d.toastOnDone ? 1 : 0);
     WriteString(kSectionLog, L"pathOverride", d.logPathOverride);
     WriteInt(kSectionLog, L"follow", d.followLog ? 1 : 0);
+    WriteInt(kSectionLog, L"debug", d.debugLog ? 1 : 0);
+    WriteInt(kSectionLog, L"clearOnStart", d.clearLogOnStart ? 1 : 0);
 
     WriteInt(kSectionWindow, L"x", d.winX);
     WriteInt(kSectionWindow, L"y", d.winY);

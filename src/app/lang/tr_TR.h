@@ -45,6 +45,8 @@ static const wchar_t* const tr_TR[] = {
     /* AutoSwitchLabel    */ L"Enjeksiyon bitince g\u00fcnl\u00fck sayfas\u0131na ge\u00e7",
     /* ToastDoneLabel     */ L"Enjeksiyon bitince bildirim g\u00f6ster",
     /* FollowLogLabel     */ L"G\u00fcnl\u00fck sayfas\u0131 otomatik kayd\u0131rma",
+    /* DebugLogLabel      */ L"Proxy hata ay\u0131klama g\u00fcnl\u00fc\u011f\u00fcn\u00fc kaydet",
+    /* ClearLogOnStartLabel */ L"Ba\u015flang\u0131\u00e7ta eski g\u00fcnl\u00fckleri sil",
     /* LogSourceCard      */ L"G\u00fcnl\u00fck Kayna\u011f\u0131",
     /* AutoDetectPlaceholder */ L"Otomatik alg\u0131lama (hen\u00fcz g\u00fcnl\u00fck yok)",
     /* LogSourceHint      */ L"Varsay\u0131lan olarak %APPDATA%\\.minecraft\\proxy.log, %TEMP%\\MinecraftProxy.log ve benzeri konumlar otomatik alg\u0131lan\u0131r; dosyay\u0131 elle se\u00e7mek i\u00e7in yukar\u0131daki yola t\u0131klay\u0131n",

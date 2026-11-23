@@ -1,8 +1,12 @@
 #include "packet_filter.h"
 
+#include "proxy.h"
 #include "b_server.h"
 #include "jni_lookup.h"
 #include "server/state.h"
+
+#include <mutex>
+#include <unordered_map>
 
 namespace packet_filter {
 namespace {
@@ -34,15 +38,59 @@ const char* const kHiddenSuffixes[] = {
     "LevelEventPacket",              // generic effect events (break sounds, smoke)
 };
 
-bool EndsWithAny(const std::string& cls) {
-    if (cls.empty())
+// Allocation-free suffix test: compare the raw char pointers directly, no
+// std::string temporaries. Called once per unseen packet class; results are
+// cached below, so the hot path never reaches this for a known class.
+bool EndsWithAny(const char* cls, size_t len) {
+    if (!cls || len == 0)
         return false;
     for (const char* suffix : kHiddenSuffixes) {
-        const std::string s(suffix);
-        if (cls.size() >= s.size() && cls.compare(cls.size() - s.size(), s.size(), s) == 0)
+        const size_t slen = strlen(suffix);
+        if (len >= slen && memcmp(cls + len - slen, suffix, slen) == 0)
             return true;
     }
     return false;
+}
+
+// Per-class verdict cache. Packet classes are a tiny fixed set; each entry is
+// resolved once, then every packet costs a single hash lookup. jclass values
+// are local references from GetObjectClass, so the key is the class *name*
+// (stable for the JVM's lifetime), not the jobject.
+struct ClassVerdict {
+    bool hidden;
+};
+std::mutex g_cacheMutex;
+std::unordered_map<std::string, bool> g_cache;
+
+bool HiddenByName(JNIEnv* env, jobject packet) {
+    // Resolve the class name once; JniClassName is the only allocation on a
+    // cache miss. On a hit this path is allocation-free.
+    const jclass c = env->GetObjectClass(packet);
+    if (!c)
+        return false;
+    char* sig = nullptr;
+    const jvmtiError rc = g_jvmti ? g_jvmti->GetClassSignature(c, &sig, nullptr) : JVMTI_ERROR_INVALID_ENVIRONMENT;
+    env->DeleteLocalRef(c);
+    if (rc != JVMTI_ERROR_NONE || !sig)
+        return false;
+    std::string name;
+    const char* p = sig;
+    if (*p == 'L') {
+        ++p;
+        for (; *p && *p != ';'; ++p)
+            name.push_back(*p == '/' ? '.' : *p);
+    } else {
+        name = sig;
+    }
+    g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(sig));
+
+    std::lock_guard<std::mutex> lock(g_cacheMutex);
+    const auto it = g_cache.find(name);
+    if (it != g_cache.end())
+        return it->second;
+    const bool hidden = EndsWithAny(name.c_str(), name.size());
+    g_cache.emplace(std::move(name), hidden);
+    return hidden;
 }
 
 // A ClientboundBundlePacket can wrap chunk/chat packets; the container itself
@@ -81,9 +129,7 @@ bool bundleFullyHidden(JNIEnv* env, jobject packet) {
             if (!sub)
                 continue;
             ++seen;
-            const std::string cls = JniClassName(env, sub);
-            env->DeleteLocalRef(sub);
-            if (!EndsWithAny(cls)) {
+            if (!HiddenByName(env, sub)) {
                 seen = -1; // a state-bearing packet: keep the whole bundle
                 break;
             }
@@ -102,10 +148,9 @@ bool bundleFullyHidden(JNIEnv* env, jobject packet) {
 bool HideFromA(JNIEnv* env, jobject packet, const std::string& cls) {
     if (!BServer_IsBActive())
         return false; // no B session: A plays normally
-    std::string name = cls;
-    if (name.empty())
-        name = JniClassName(env, packet);
-    return EndsWithAny(name) || bundleFullyHidden(env, packet);
+    if (!cls.empty())
+        return EndsWithAny(cls.c_str(), cls.size()) || bundleFullyHidden(env, packet);
+    return HiddenByName(env, packet) || bundleFullyHidden(env, packet);
 }
 
 } // namespace packet_filter
