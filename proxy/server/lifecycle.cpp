@@ -3,10 +3,6 @@
 
 namespace proxy_server {
 
-void BServer_DisconnectARemote(JNIEnv* env) {
-    closeARemoteConnection(env);
-}
-
 void clearPendingPackets(JNIEnv* env) {
     for (jobject packet : server.pendingPackets)
         env->DeleteGlobalRef(packet);
@@ -73,6 +69,11 @@ bool waitNettyFuture(JNIEnv* env, jobject future) {
 } // namespace proxy_server
 
 using namespace proxy_server;
+
+void BServer_DisconnectARemote(JNIEnv* env) {
+    closeARemoteConnection(env);
+}
+
 
 bool InstallBServer(JNIEnv* env) {
     if (server.bound)
