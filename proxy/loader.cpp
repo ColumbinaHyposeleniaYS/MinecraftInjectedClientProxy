@@ -83,6 +83,13 @@ DWORD WINAPI RuntimeThread(LPVOID) {
         return 0;
     }
 
+    std::snprintf(eventName, sizeof(eventName), MICP_DISCONNECT_PREFIX "%lu", GetCurrentProcessId());
+    HANDLE disconnect = CreateEventA(nullptr, FALSE, FALSE, eventName);
+    if (!disconnect) {
+        CloseHandle(resume);
+        return 0;
+    }
+
     LogTo("Runtime: resident controller started");
     HMODULE jvm = nullptr;
     for (int i = 0; i < 600 && !jvm; ++i) {
@@ -103,11 +110,13 @@ DWORD WINAPI RuntimeThread(LPVOID) {
     JavaVMAttachArgs args{JNI_VERSION_1_8, const_cast<char*>("MICPRuntime"), nullptr};
     if (!g_vm || g_vm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(&env), &args) != JNI_OK) {
         LogTo("Runtime: could not attach to JVM");
+        CloseHandle(disconnect);
         CloseHandle(resume);
         return 0;
     }
     if (g_vm->GetEnv(reinterpret_cast<void**>(&g_jvmti), JVMTI_VERSION_1_2) != JNI_OK) {
         LogTo("Runtime: JVMTI unavailable");
+        CloseHandle(disconnect);
         g_vm->DetachCurrentThread();
         CloseHandle(resume);
         return 0;
@@ -150,14 +159,23 @@ DWORD WINAPI RuntimeThread(LPVOID) {
                 env->PopLocalFrame(nullptr);
             } else env->ExceptionClear();
         }
-        DWORD wait = WaitForSingleObject(resume, active ? 25 : 250);
+        HANDLE waits[2] = { resume, disconnect };
+        DWORD wait = WaitForMultipleObjects(2, waits, FALSE, active ? 25 : 250);
         if (wait == WAIT_OBJECT_0 && !active) requested = true;
+        if (wait == WAIT_OBJECT_0 + 1 && active) {
+            // GUI asked to drop A's connection to the remote server; the proxy stays resident.
+            if (env->PushLocalFrame(128) == JNI_OK) {
+                proxy_server::BServer_DisconnectARemote(env);
+                env->PopLocalFrame(nullptr);
+            } else env->ExceptionClear();
+        }
         if (wait == WAIT_FAILED) break;
     }
     if (env->PushLocalFrame(512) == JNI_OK) {
         stopSession(env);
         env->PopLocalFrame(nullptr);
     } else env->ExceptionClear();
+    CloseHandle(disconnect);
     g_vm->DetachCurrentThread();
     CloseHandle(resume);
     return 0;

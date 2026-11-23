@@ -3,6 +3,10 @@
 
 namespace proxy_server {
 
+void BServer_DisconnectARemote(JNIEnv* env) {
+    closeARemoteConnection(env);
+}
+
 void clearPendingPackets(JNIEnv* env) {
     for (jobject packet : server.pendingPackets)
         env->DeleteGlobalRef(packet);

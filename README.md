@@ -55,21 +55,23 @@ MSVC 构建时 `Proxy.dll` 会作为 RCDATA 资源嵌入 GUI 程序：注入时�
 cmake -S . -B build
 cmake --build build --config Release --parallel
 # 产物：build\bin\Release\MinecraftProxy.exe
-#      build\bin\Release\Aurora.dll（代理核心，MSVC 工具链时自动构建，随后嵌入 GUI）
+#      build\bin\Release\Proxy.dll（代理核心，MSVC 工具链时自动构建，随后嵌入 GUI）
 ```
 
-GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Aurora.dll，仅生成 exe）。
+GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Proxy.dll，仅生成 exe）。
 
 ## 使用方法
 
-1. 下载 Release 压缩包并解压到任意目录（Aurora.dll 代理核心已内置在程序中，无需额外获取）
+1. 下载 Release 压缩包并解压到任意目录（Proxy.dll 代理核心已内置在程序中，无需额外获取）
 2. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
 3. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
 4. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
 
 注入成功后，程序会持续监视代理状态（进程存活 / 端口监听 / B 连接数）。游戏内按 DEL 可随时停用代理，再次注入即可恢复。
 
-## Aurora.dll（代理核心）
+注入页提供「断开服务器」按钮（代理监听期间可用）：一键断开 A 端与真实服务器的连接，代理保持驻留，随时可重新注入恢复。
+
+## Proxy.dll（代理核心）
 
 代理核心源码位于 `proxy/`，随仓库一起构建，Release 自动打包，无需另外获取。
 

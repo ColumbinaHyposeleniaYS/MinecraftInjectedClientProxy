@@ -14,6 +14,9 @@ void BServer_SetTargetConnection(JNIEnv* env, jobject connection);
 enum class LiveConnectionState { NotConnected, Captured, Failed };
 LiveConnectionState BServer_TryCaptureLiveConnection(JNIEnv* env);
 
+// Disconnect request: close A's live connection to the remote server on demand.
+void BServer_DisconnectARemote(JNIEnv* env);
+
 // Relay: serialize snapshot boundaries with downstream packet dispatch.
 bool BServer_IsBActive();
 std::recursive_mutex& BServer_DispatchMutex();

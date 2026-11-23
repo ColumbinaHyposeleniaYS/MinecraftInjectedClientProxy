@@ -4,6 +4,7 @@
 #include "core/AppPaths.h"
 #include "core/EmbeddedDll.h"
 #include "core/Injector.h"
+#include "core/injectcore/RuntimeControl.h" // disconnect-event contract shared with the DLL (proxy/loader.cpp)
 #include "core/PortProbe.h"
 #include "core/ProcessFinder.h"
 
@@ -542,6 +543,7 @@ void App::Relayout()
         L.ijBtnGo = RectF(L.ijSteps.x + cardPad, by, float(S(124)), bh);
         L.ijBtnRecheck = RectF(L.ijBtnGo.right() + float(S(10)), by, float(S(104)), bh);
         L.ijBtnCancel = RectF(L.ijBtnRecheck.right() + float(S(10)), by, float(S(104)), bh);
+        L.ijBtnDisc = RectF(L.ijBtnCancel.right() + float(S(10)), by, float(S(104)), bh);
         {
             BtnDef go;
             go.id = ID_BTN_INJECT;
@@ -558,6 +560,17 @@ void App::Relayout()
             re.style = 1;
             re.r = L.ijBtnRecheck;
             L.btns.push_back(re);
+            const bool canDisconnect = m_snap.observing && m_snap.listening && !m_seq.IsRunning();
+            if (canDisconnect)
+            {
+                BtnDef disc;
+                disc.id = ID_BTN_DISCONNECT;
+                disc.label = lang::Tr(lang::Str::DisconnectBtn); // 断开服务器
+                disc.style = 2;
+                disc.danger = true;
+                disc.r = L.ijBtnDisc;
+                L.btns.push_back(disc);
+            }
             if (m_seq.IsRunning())
             {
                 BtnDef cancel;
@@ -1954,6 +1967,15 @@ void App::OnCommand(int id)
     {
         m_seq.Cancel();
         ShowToast(lang::Tr(lang::Str::TsCancelling), 0);
+    }
+    else if (id == ID_BTN_DISCONNECT)
+    {
+        const DWORD pid = m_snap.pid;
+        const int r = pid ? TryDisconnectProxy(pid) : 0;
+        if (r > 0)
+            ShowToast(lang::Tr(lang::Str::TsDisconnectOk), 0);
+        else
+            ShowToast(lang::Tr(lang::Str::TsDisconnectFail), 2);
     }
     else if (id == ID_BTN_RECHECK)
     {

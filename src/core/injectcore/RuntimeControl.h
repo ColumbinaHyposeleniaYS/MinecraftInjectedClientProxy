@@ -16,6 +16,7 @@
 
 #define MICP_RESUME_PREFIX         "Local\\MinecraftInjectedClientProxy.Resume.v1."
 #define MICP_RESUME_PREFIX_LEGACY  "Local\\SakuraTools.Resume.v1."
+#define MICP_DISCONNECT_PREFIX     "Local\\MinecraftInjectedClientProxy.Disconnect.v1."
 
 /* 1: resident signalled, 0: no resident, -1: access/signalling failure. */
 static int TryResumeProxyWithPrefix(const char* cpPrefix, DWORD dwProcessId)
@@ -45,4 +46,10 @@ static int TryResumeProxy(DWORD dwProcessId)
     if (iResult != 0)
         return iResult;
     return TryResumeProxyWithPrefix(MICP_RESUME_PREFIX_LEGACY, dwProcessId);
+}
+
+/* 1: resident signalled, 0: no resident, -1: access/signalling failure. */
+static int TryDisconnectProxy(DWORD dwProcessId)
+{
+    return TryResumeProxyWithPrefix(MICP_DISCONNECT_PREFIX, dwProcessId);
 }

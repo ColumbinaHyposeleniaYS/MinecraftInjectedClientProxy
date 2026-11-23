@@ -37,6 +37,7 @@ enum {
 
     ID_BTN_INJECT = 20,
     ID_BTN_CANCEL_INJ = 21,
+    ID_BTN_DISCONNECT = 22,
     ID_BTN_RECHECK = 23,
     ID_BTN_OPEN_LOGDIR = 24,
     ID_BTN_OPEN_LOGFILE = 25,
@@ -138,7 +139,7 @@ struct Layout
     RectF ijHintKw, ijHintPort; // hint lines under each field
     RectF ijStepBullets[4], ijStepTexts[4];
     RectF ijBanner, ijBar;
-    RectF ijBtnGo, ijBtnRecheck, ijBtnCancel;
+    RectF ijBtnGo, ijBtnRecheck, ijBtnCancel, ijBtnDisc;
 
     // logs
     RectF lgSeg, lgTgl, lgBtnClear, lgBtnOpen, lgCard, lgHead, lgBody, lgScroll;
