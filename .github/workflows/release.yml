@@ -66,17 +66,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item "build\bin\Release\$app.exe" -Destination $bundle
           Copy-Item README.md -Destination $bundle
-          # The proxy core is embedded in the GUI at build time; the DLL is
-          # still shipped alongside. CI is MSVC, so it must exist.
-          $bundledDll = $false
-          $dll = "build\bin\Release\Aurora.dll"
-          if (Test-Path $dll -PathType Leaf) {
-            Copy-Item $dll -Destination $bundle
-            $bundledDll = $true
-          } else {
-            Write-Warning "Aurora.dll not found - check the aurora target build."
-          }
-          "bundledDll=$($bundledDll ? 'true' : 'false')" >> $env:GITHUB_ENV
+          # The proxy core is embedded in the GUI exe as RCDATA; no standalone
+          # DLL is shipped in the bundle.
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $zipName = "$app-$tag-win64.zip"
           $zip = "dist\$zipName"
@@ -103,11 +94,6 @@ jobs:
           }
           $changelog = (@($commits) | Select-Object -First 40) -join "`n"
           if (-not $changelog) { $changelog = '- 初始发布' }
-          $dllNote = if ('${{ env.bundledDll }}' -eq 'true') {
-            '- `Aurora.dll`（代理核心）已随包附带；代理核心也已内置在程序中，注入时自动使用'
-          } else {
-            '- ⚠️ 本次构建未生成 `Aurora.dll`；程序内置的代理核心不受影响，注入时自动使用'
-          }
           # NOTE: the here-string body below sits at the script's column 0 after
           # YAML strips the common indentation - required by PowerShell syntax.
           $template = @'
@@ -115,7 +101,7 @@ jobs:
 
           | 文件 | 说明 |
           | --- | --- |
-          | `MinecraftProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（GUI 单 exe + `Aurora.dll` 代理核心，无任何运行时依赖） |
+          | `MinecraftProxy-__TAG__-win64.zip` | Windows x64 便携版，解压即用（GUI 单 exe，代理核心已内置，无任何运行时依赖） |
           | `checksums.sha256` | SHA-256 校验和 |
 
           ## 更新内容 __TAG__
@@ -126,7 +112,6 @@ jobs:
 
           - Windows 10 / 11（x64）
           - 无需安装任何运行库：本程序为纯 Win32 实现，不依赖 Qt / .NET / VC++ Redist
-          __DLLNOTE__
 
           ## 快速上手
 
@@ -137,9 +122,9 @@ jobs:
 
           完整说明见压缩包内的 `README.md`。仅供学习交流使用，请遵守所玩服务器的规则。
 
-          > 构建信息：`__TAG__` @ `__SHA__` · MSVC x64 · Win32/GDI+ GUI + Aurora 代理核心
+          > 构建信息：`__TAG__` @ `__SHA__` · MSVC x64 · Win32/GDI+ GUI + Proxy 代理核心
           '@
-          $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__CHANGELOG__', $changelog).Replace('__DLLNOTE__', $dllNote)
+          $notes = $template.Replace('__TAG__', $tag).Replace('__SHA__', $sha).Replace('__CHANGELOG__', $changelog)
           $notes | Out-File -FilePath release-notes.md -Encoding utf8
           Get-Content release-notes.md
 

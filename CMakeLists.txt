@@ -81,7 +81,7 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
-# Aurora.dll - the resident proxy core injected into client A.
+# Proxy.dll - the resident proxy core injected into client A.
 #
 # Ported from the upstream NativeBox project (its native/ tree lives here as
 # proxy/). proxy/sources.txt is the single source list for the production DLL;
@@ -112,27 +112,27 @@ if(MSVC)
         $<$<CONFIG:Release>:/O2>)
     target_link_libraries(aurora PRIVATE psapi ws2_32 kernel32 user32 advapi32)
     set_target_properties(aurora PROPERTIES
-        OUTPUT_NAME Aurora
+        OUTPUT_NAME Proxy
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-    # Embed Aurora.dll into the GUI exe as RCDATA (MICP_HAS_EMBEDDED_DLL):
-    # the injector extracts it to %TEMP% when no external DLL is found.
+    # Embed Proxy.dll into the GUI exe as RCDATA (MICP_HAS_EMBEDDED_DLL):
+    # the injector extracts it to %TEMP% at injection time.
     # The copy must run before micp's resources are compiled, hence the
     # explicit target-level dependency.
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/aurora_embed.rc"
-        "AURORA_DLL RCDATA \"Aurora.dll\"\n")
-    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll"
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/proxy_embed.rc"
+        "AURORA_DLL RCDATA \"Proxy.dll\"\n")
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Proxy.dll"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:aurora>" "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll"
+            "$<TARGET_FILE:aurora>" "${CMAKE_CURRENT_BINARY_DIR}/Proxy.dll"
         DEPENDS aurora
-        COMMENT "Copying Aurora.dll for RCDATA embedding")
+        COMMENT "Copying Proxy.dll for RCDATA embedding")
     add_custom_target(copy_aurora_dll
-        DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/Aurora.dll")
+        DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/Proxy.dll")
     add_dependencies(micp copy_aurora_dll)
-    target_sources(micp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/aurora_embed.rc")
+    target_sources(micp PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/proxy_embed.rc")
     target_compile_definitions(micp PRIVATE MICP_HAS_EMBEDDED_DLL)
 else()
-    message(STATUS "Aurora.dll (proxy core) needs the MSVC toolchain - building the GUI only.")
+    message(STATUS "Proxy.dll (proxy core) needs the MSVC toolchain - building the GUI only.")
 endif()
 
 # Convenience target: run the freshly built exe.

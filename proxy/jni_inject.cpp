@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <jni.h>
 
-// Not part of the Aurora.dll build (see proxy/sources.txt): JNI bridge for a
+// Not part of the Proxy.dll build (see proxy/sources.txt): JNI bridge for a
 // Java-side companion injector. Headers come from the shared injection core
 // (src/core/injectcore), added to the include path by CMake.
 extern "C" {

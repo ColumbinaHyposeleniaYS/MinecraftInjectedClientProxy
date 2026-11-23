@@ -247,7 +247,7 @@ static void PaintOverview(Gdiplus::Graphics& g, const Layout& L)
             const wchar_t* stateText;
         };
         Row rows[4] = {};
-        rows[0] = { lang::Tr(lang::Str::OvProxyDll), std::wstring(L"Aurora.dll"), app.m_dllFound, true,
+        rows[0] = { lang::Tr(lang::Str::OvProxyDll), std::wstring(L"Proxy.dll"), app.m_dllFound, true,
                     app.m_dllFound ? pal.success : pal.danger,
                     app.m_dllFound ? lang::Tr(lang::Str::OvStateFound) : lang::Tr(lang::Str::OvStateNotFound) };
         rows[1] = { lang::Tr(lang::Str::OvKeywordLabel), app.m_set.keyword, false, false, pal.text, L"" };
@@ -678,7 +678,7 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
     };
     const AboutLine lines[] = {
         { lang::Tr(lang::Str::AbLine1), false }, // 原生 Win32 / GDI+ · 无任何运行时依赖 · 单文件 exe
-        { lang::Tr(lang::Str::AbLine2), false }, // 代理核心 Aurora.dll 随 Release 附带，与本程序同目录即可使用
+        { lang::Tr(lang::Str::AbLine2), false }, // 代理核心 Proxy.dll 已内置
         { lang::Tr(lang::Str::AbLine3), true }, // 仅供学习交流使用，请遵守…
     };
     float ly = fy + float(S(16));

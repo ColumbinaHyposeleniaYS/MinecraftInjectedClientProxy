@@ -1733,7 +1733,7 @@ void App::OnEditFocus(int ctrlId, bool focused)
 std::wstring App::ResolvedDllPath() const
 {
     // The proxy core lives inside this executable. Extract it on demand;
-    // an empty result means this build carries no embedded Aurora.dll.
+    // an empty result means this build carries no embedded Proxy.dll.
     return EmbeddedDll::ExtractToTemp();
 }
 
@@ -1750,7 +1750,7 @@ void App::StartInject()
     m_bannerKind = 0;
     m_bannerText.clear();
 
-    // The Aurora.dll core is embedded in this executable. Without it there is
+    // The Proxy.dll core is embedded in this executable. Without it there is
     // nothing to inject - refuse early with a clear message.
     if (!EmbeddedDll::Available())
     {

@@ -109,9 +109,8 @@ std::once_flag g_packageInitFlag;
 }
 
 const std::string& GetTrampolinePackage() {
-    std::call_once(g_packageInitFlag, []() {
+    std::call_once(g_packageInitFlag, [] {
         g_trampolinePackage = GenerateRandomPackageName();
     });
     return g_trampolinePackage;
 }
-
