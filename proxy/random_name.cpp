@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <random>
 #include <mutex>
+#include <atomic>
 #include <string>
 
 namespace {
@@ -56,9 +57,13 @@ std::string GenerateRandomClassName(int minWords, int maxWords) {
     if (minWords < 1) minWords = 1;
     if (maxWords < minWords) maxWords = minWords;
 
+    // Deterministic per build, but each call must yield a DIFFERENT name:
+    // trampolines, relay handler, transport and snapshot all call this in one
+    // process, so fold in a monotonic call counter.
+    static std::atomic<uint64_t> s_callCounter{0};
     std::mt19937_64 rng(BuildSeed() ^
                         (static_cast<uint64_t>(GetCurrentProcessId()) << 32) ^
-                        GetCurrentProcessId());
+                        s_callCounter.fetch_add(1));
 
     std::uniform_int_distribution<int> nDist(minWords * 5, maxWords * 6);
     return SeededName(rng, nDist(rng));
