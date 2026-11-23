@@ -165,7 +165,7 @@ DWORD WINAPI RuntimeThread(LPVOID) {
         if (wait == WAIT_OBJECT_0 + 1 && active) {
             // GUI asked to drop A's connection to the remote server; the proxy stays resident.
             if (env->PushLocalFrame(128) == JNI_OK) {
-                proxy_server::BServer_DisconnectARemote(env);
+                BServer_DisconnectARemote(env);
                 env->PopLocalFrame(nullptr);
             } else env->ExceptionClear();
         }
