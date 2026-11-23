@@ -95,7 +95,11 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS proxy/sources.txt
 if(MSVC)
     file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/proxy/sources.txt" AURORA_SOURCES)
 
+    # Per-build randomization seed (class/package names): derive it from the
+    # configure-time date so every build produces a distinct, reproducible set.
+    string(TIMESTAMP MICP_BUILD_SEED "%Y%m%d%H%M%S" UTC)
     add_library(aurora SHARED ${AURORA_SOURCES})
+    target_compile_definitions(aurora PRIVATE MICP_BUILD_SEED="${MICP_BUILD_SEED}")
     target_include_directories(aurora PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/proxy
         ${CMAKE_CURRENT_SOURCE_DIR}/proxy/include
