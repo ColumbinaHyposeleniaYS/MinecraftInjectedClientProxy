@@ -96,15 +96,22 @@ jobject BuildStatusResponse(JNIEnv* env, jobject mcLoader, const std::u16string&
         jmethodID empty = env->GetStaticMethodID(optional, "empty", "()Ljava/util/Optional;");
         if (!empty) return nullptr;
         step = "ServerStatus constructor (vanilla or Forge)";
-        bool forgeStatus = false;
+        enum class StatusCtor { Vanilla, Forge, Modern } statusKind = StatusCtor::Vanilla;
         jmethodID statusCtor = env->GetMethodID(serverStatus, "<init>",
             "(Lnet/minecraft/network/chat/Component;Ljava/util/Optional;Ljava/util/Optional;Ljava/util/Optional;Z)V");
+        if (!statusCtor) {
+            env->ExceptionClear();
+            // 1.21.x: isModded is a boolean, not an Optional.
+            statusCtor = env->GetMethodID(serverStatus, "<init>",
+                "(Lnet/minecraft/network/chat/Component;Ljava/util/Optional;Ljava/util/Optional;Ljava/util/Optional;ZZ)V");
+            if (statusCtor) statusKind = StatusCtor::Modern;
+        }
         if (!statusCtor) {
             env->ExceptionClear();
             // Forge 1.20.1 adds an optional ServerStatusPing to the record.
             statusCtor = env->GetMethodID(serverStatus, "<init>",
                 "(Lnet/minecraft/network/chat/Component;Ljava/util/Optional;Ljava/util/Optional;Ljava/util/Optional;ZLjava/util/Optional;)V");
-            forgeStatus = true;
+            statusKind = StatusCtor::Forge;
         }
         if (!statusCtor) return nullptr;
         step = "ClientboundStatusResponsePacket(ServerStatus)";
@@ -138,14 +145,19 @@ jobject BuildStatusResponse(JNIEnv* env, jobject mcLoader, const std::u16string&
         jobject absent = env->CallStaticObjectMethod(optional, empty);
         if (env->ExceptionCheck() || !absent) return nullptr;
         step = "creating ServerStatus";
-        jobject status = forgeStatus
-            ? env->NewObject(serverStatus, statusCtor, motd, slotsOpt, verOpt, absent, (jboolean)JNI_FALSE, absent)
-            : env->NewObject(serverStatus, statusCtor, motd, slotsOpt, verOpt, absent, (jboolean)JNI_FALSE);
+        jobject status = nullptr;
+        if (statusKind == StatusCtor::Forge)
+            status = env->NewObject(serverStatus, statusCtor, motd, slotsOpt, verOpt, absent, (jboolean)JNI_FALSE, absent);
+        else if (statusKind == StatusCtor::Modern)
+            status = env->NewObject(serverStatus, statusCtor, motd, slotsOpt, verOpt, absent, (jboolean)JNI_FALSE, (jboolean)JNI_TRUE);
+        else
+            status = env->NewObject(serverStatus, statusCtor, motd, slotsOpt, verOpt, absent, (jboolean)JNI_FALSE);
         if (env->ExceptionCheck() || !status) return nullptr;
         step = "creating ClientboundStatusResponsePacket";
         jobject packet = env->NewObject(packetClass, packetCtor, status);
         if (env->ExceptionCheck() || !packet) return nullptr;
-        LogTo("STATUS: %s response ready, MICP Proxy MOTD", forgeStatus ? "Forge" : "vanilla");
+        LogTo("STATUS: %s response ready, MICP Proxy MOTD",
+              statusKind == StatusCtor::Forge ? "Forge" : statusKind == StatusCtor::Modern ? "1.21.x" : "vanilla");
         return packet;
     };
     jobject result = build();

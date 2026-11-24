@@ -95,7 +95,7 @@ static const wchar_t* const tr_TR[] = {
     /* LinesFiltered      */ L"%d / %d sat\u0131r",
     /* LogsEmpty          */ L"Hen\u00fcz g\u00fcnl\u00fck yok, vekil \u00e7\u0131kt\u0131s\u0131 bekleniyor\u2026",
     /* AbVersionPill      */ L"v%s \u00b7 yerel Win32, tek dosya",
-    /* AbTagline          */ L"Minecraft 1.20.1 istemcisi ters vekil sunucu \u00b7 enjeksiyon ve y\u00f6netim arac\u0131",
+    /* AbTagline          */ L"Minecraft 1.20.1 / 1.21.10 NeoForge istemcisi ters vekil sunucu \u00b7 enjeksiyon ve y\u00f6netim arac\u0131",
     /* AbLine1            */ L"Yerel Win32 / GDI+ \u00b7 s\u0131f\u0131r \u00e7al\u0131\u015fma zaman\u0131 ba\u011f\u0131ml\u0131l\u0131\u011f\u0131 \u00b7 tek exe",
     /* AbLine2            */ L"\u4ee3\u7406\u6838\u5fc3 Proxy.dll \u5df2\u5185\u7f6e\uff0c\u65e0\u9700\u989d\u5916 DLL",
     /* AbLine3            */ L"Yaln\u0131zca e\u011fitim ve payla\u015f\u0131m ama\u00e7l\u0131d\u0131r \u2014 l\u00fctfen Minecraft EULA's\u0131na ve hedef sunucu kurallar\u0131na uyun",

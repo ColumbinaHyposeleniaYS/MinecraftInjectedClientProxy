@@ -5,6 +5,7 @@
 #include "b_server.h"
 #include "server/internal.h"
 #include "server/state.h"
+#include "jni_lookup.h"
 
 #include <atomic>
 #include <cstdio>
@@ -173,6 +174,10 @@ bool cacheChatNotifyBindings(JNIEnv* env, jobject mcLoader) {
     if (server.refs.minecraftCls) {
         jclass mcClass = static_cast<jclass>(env->NewLocalRef(server.refs.minecraftCls));
         server.refs.mcOptionsFid = env->GetFieldID(mcClass, "options", "Lnet/minecraft/client/Options;");
+        if (!server.refs.mcOptionsFid || env->ExceptionCheck()) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            server.refs.mcOptionsFid = findFieldByDescriptor(mcClass, "Lnet/minecraft/client/Options;", false);
+        }
         env->DeleteLocalRef(mcClass);
         jclass options = LoadClassInLoader(env, mcLoader, "net.minecraft.client.Options");
         if (options) {
@@ -186,8 +191,13 @@ bool cacheChatNotifyBindings(JNIEnv* env, jobject mcLoader) {
 
     const bool ok = server.refs.systemChatPacketCls && server.refs.systemChatPacketCtor &&
                     server.refs.componentCls && server.refs.componentLiteralMid;
-    if (!ok)
+    if (!ok) {
         LogTo("chat-notify: bindings unavailable; ready message disabled");
+    } else {
+        LogTo("chat-notify: bindings ready; options=%s language=%s",
+              server.refs.mcOptionsFid ? "ok" : "missing",
+              server.refs.optionsLanguageFid ? "ok" : "missing");
+    }
     return ok;
 }
 
@@ -236,6 +246,7 @@ void ChatNotify_NotifyProxyReady(JNIEnv* env) {
         LogTo("chat-notify: ready message sent (port %u)", static_cast<unsigned>(port));
         return;
     }
+    LogTo("chat-notify: ready send failed; will retry once A's connection is captured");
     g_notified.store(false); // retry when bindings / connection appear
 }
 

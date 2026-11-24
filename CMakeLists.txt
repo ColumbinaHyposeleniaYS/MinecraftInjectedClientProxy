@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(MinecraftInjectedClientProxy
     VERSION 1.0.7
-    DESCRIPTION "Minecraft 1.20.1 injected client proxy - desktop GUI"
+    DESCRIPTION "Minecraft 1.20.1 / 1.21.10 NeoForge injected client proxy - desktop GUI"
     LANGUAGES C CXX)
 
 if(NOT WIN32)

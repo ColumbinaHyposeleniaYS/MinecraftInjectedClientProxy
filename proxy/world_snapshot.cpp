@@ -4,6 +4,9 @@
 #include "random_name.h"
 #include "runtime_gate.h"
 #include "login_handoff.h"
+#include "jni_lookup.h"
+#include "server/state.h"
+#include "server/version_detect.h"
 #include <algorithm>
 #include <cmath>
 #include <condition_variable>
@@ -72,7 +75,70 @@ void captureNow(JNIEnv* env, Job& job) {
     jobject dimension = j.object(level, LEVEL, "dimension", "m_46472_", "()Lnet/minecraft/resources/ResourceKey;");
     jobject dimensionType = j.object(level, LEVEL, "dimensionTypeId", "m_220362_", "()Lnet/minecraft/resources/ResourceKey;");
     jobject empty = j.stat("java.util.Optional", "empty", "empty", "()Ljava/util/Optional;");
-    add(j.make(PACKET("ClientboundLoginPacket"),
+    const bool modern = proxy_server::server.refs.version == proxy_server::McVersion::V1_21_10;
+    if (modern) {
+        // 1.21.x ClientboundLoginPacket / CommonPlayerSpawnInfo are records whose
+        // constructor arity and field order changed across minor releases. Probe the
+        // known shapes and skip only the login packet when none fits (never abort the
+        // whole snapshot, so 1.20.1 behaviour stays untouched).
+        try {
+            jclass loginCls = j.type(PACKET("ClientboundLoginPacket"));
+            jclass spawnCls = j.type(PACKET("CommonPlayerSpawnInfo"));
+            jmethodID holderMid = proxy_server::findMethodByDescriptor(
+                j.type(LEVEL), "()Lnet/minecraft/core/Holder;", false);
+            jobject holder = holderMid ? env->CallObjectMethod(level, holderMid) : nullptr;
+            if (env->ExceptionCheck()) { env->ExceptionClear(); holder = nullptr; }
+
+            jobject spawnInfo = nullptr;
+            static const char* kSpawnDesc[] = {
+                "(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/core/Holder;J"
+                "Lnet/minecraft/world/level/GameType;Lnet/minecraft/world/level/GameType;"
+                "ZZLjava/util/Optional;I)V",
+                "(Lnet/minecraft/core/Holder;Lnet/minecraft/resources/ResourceKey;J"
+                "Lnet/minecraft/world/level/GameType;Lnet/minecraft/world/level/GameType;"
+                "ZZLjava/util/Optional;I)V",
+            };
+            for (int si = 0; si < 2 && !spawnInfo && holder; ++si) {
+                jmethodID ctor = env->GetMethodID(spawnCls, "<init>", kSpawnDesc[si]);
+                if (!ctor) { env->ExceptionClear(); continue; }
+                spawnInfo = si == 0
+                    ? env->NewObject(spawnCls, ctor, dimension, holder, (jlong)0, gameType, gameType,
+                                     JNI_FALSE, JNI_FALSE, empty, (jint)0)
+                    : env->NewObject(spawnCls, ctor, holder, dimension, (jlong)0, gameType, gameType,
+                                     JNI_FALSE, JNI_FALSE, empty, (jint)0);
+                if (env->ExceptionCheck()) { env->ExceptionClear(); spawnInfo = nullptr; }
+            }
+            if (holder) env->DeleteLocalRef(holder);
+
+            if (spawnInfo) {
+                jobject safeLevels = j.stat("java.util.Collections", "emptySet", "emptySet", "()Ljava/util/Set;");
+                static const char* kLoginDesc[] = {
+                    "(IZLjava/util/Set;IIIZZZZLnet/minecraft/network/protocol/game/CommonPlayerSpawnInfo;Z)V",
+                    "(IZLjava/util/Set;IIIZZZLnet/minecraft/network/protocol/game/CommonPlayerSpawnInfo;Z)V",
+                };
+                for (int li = 0; li < 2; ++li) {
+                    jmethodID ctor = env->GetMethodID(loginCls, "<init>", kLoginDesc[li]);
+                    if (!ctor) { env->ExceptionClear(); continue; }
+                    jobject pkt = li == 0
+                        ? env->NewObject(loginCls, ctor, id, JNI_FALSE, safeLevels, (jint)1,
+                                         (jint)viewRadius, (jint)viewRadius, JNI_FALSE, JNI_FALSE,
+                                         JNI_FALSE, JNI_FALSE, spawnInfo, JNI_FALSE)
+                        : env->NewObject(loginCls, ctor, id, JNI_FALSE, safeLevels, (jint)1,
+                                         (jint)viewRadius, (jint)viewRadius, JNI_FALSE, JNI_FALSE,
+                                         JNI_FALSE, spawnInfo, JNI_FALSE);
+                    if (pkt && !env->ExceptionCheck()) { add(pkt); break; }
+                    if (env->ExceptionCheck()) env->ExceptionClear();
+                }
+                env->DeleteLocalRef(spawnInfo);
+            } else {
+                LogTo("mid-login: 1.21 CommonPlayerSpawnInfo constructor unavailable; skipping login packet");
+            }
+        } catch (const std::exception& e) {
+            LogTo("mid-login: 1.21 login packet build failed: %s", e.what());
+            if (env->ExceptionCheck()) env->ExceptionClear();
+        }
+    }
+    else add(j.make(PACKET("ClientboundLoginPacket"),
         "(IZLnet/minecraft/world/level/GameType;Lnet/minecraft/world/level/GameType;Ljava/util/Set;Lnet/minecraft/core/RegistryAccess$Frozen;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/resources/ResourceKey;JIIIZZZZLjava/util/Optional;I)V",
         id, JNI_FALSE, gameType, (jobject)nullptr, levels, frozen, dimensionType, dimension,
         (jlong)0, (jint)1, viewRadius, viewRadius, JNI_FALSE, JNI_TRUE, JNI_FALSE, JNI_FALSE, empty, (jint)0));

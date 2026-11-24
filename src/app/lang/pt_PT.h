@@ -95,7 +95,7 @@ static const wchar_t* const pt_PT[] = {
     /* LinesFiltered      */ L"%d / %d linhas",
     /* LogsEmpty          */ L"Ainda sem registos, \u00e0 espera do resultado do proxy\u2026",
     /* AbVersionPill      */ L"v%s \u00b7 Win32 nativo, ficheiro \u00fanico",
-    /* AbTagline          */ L"Proxy inverso do cliente Minecraft 1.20.1 \u00b7 ferramenta de inje\u00e7\u00e3o e gest\u00e3o",
+    /* AbTagline          */ L"Proxy inverso do cliente Minecraft 1.20.1 / 1.21.10 NeoForge \u00b7 ferramenta de inje\u00e7\u00e3o e gest\u00e3o",
     /* AbLine1            */ L"Win32 / GDI+ nativos \u00b7 sem depend\u00eancias de runtime \u00b7 exe de ficheiro \u00fanico",
     /* AbLine2            */ L"\u4ee3\u7406\u6838\u5fc3 Proxy.dll \u5df2\u5185\u7f6e\uff0c\u65e0\u9700\u989d\u5916 DLL",
     /* AbLine3            */ L"Apenas para estudo e interc\u00e2mbio \u2013 respeite a EULA do Minecraft e as regras do servidor alvo",

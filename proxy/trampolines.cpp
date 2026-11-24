@@ -4,6 +4,7 @@
 #include "random_name.h"
 #include "relay_handler.h"
 #include "b_server.h"
+#include "chat_notify.h"
 #include "runtime_gate.h"
 
 #include <cstdio>
@@ -49,6 +50,11 @@ void JNICALL Native_onChannelActive(JNIEnv* env,
 
     BServer_SetTargetConnection(env, connection);
     RelayHandler_AttachToPipeline(env, ctx);
+
+    // A's Connection is only available here. The login-time NotifyProxyReady
+    // may have run before targetConnection existed and rolled its guard back;
+    // retry now that sendToA can actually reach client A.
+    proxy_server::ChatNotify_NotifyProxyReady(env);
 
     LogTo("Native_onChannelActive returning");
 }

@@ -12,3 +12,6 @@ out/
 
 # Runtime artifacts
 *.log
+
+# Local analysis scratch (not part of the build)
+.local/

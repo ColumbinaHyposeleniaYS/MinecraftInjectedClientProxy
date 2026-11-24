@@ -1,5 +1,6 @@
 #include "jni_lookup.h"
 #include <cstring>
+#include <string>
 
 namespace proxy_server {
 
@@ -26,6 +27,36 @@ jmethodID findMethodByDescriptor(jclass klass, const char* desc, bool wantStatic
             g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(s));
         if (g)
             g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(g));
+    }
+    g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(mids));
+    return hit;
+}
+
+jmethodID findMethodByArgDescriptor(jclass klass, const char* fullDesc, bool wantStatic) {
+    const char* open = std::strchr(fullDesc, '(');
+    const char* close = std::strchr(fullDesc, ')');
+    if (!open || !close || close < open) return nullptr;
+    const size_t argsLen = static_cast<size_t>(close - open + 1);
+    const std::string args(open, argsLen);
+    jint count = 0;
+    jmethodID* mids = nullptr;
+    if (g_jvmti->GetClassMethods(klass, &count, &mids) != JVMTI_ERROR_NONE)
+        return nullptr;
+    jmethodID hit = nullptr;
+    for (jint i = 0; i < count && !hit; ++i) {
+        char *n = nullptr, *s = nullptr, *g = nullptr;
+        if (g_jvmti->GetMethodName(mids[i], &n, &s, &g) != JVMTI_ERROR_NONE)
+            continue;
+        jint mods = 0;
+        g_jvmti->GetMethodModifiers(mids[i], &mods);
+        bool isStatic = (mods & 0x0008) != 0;
+        if (s && isStatic == wantStatic && std::strncmp(s, args.c_str(), argsLen) == 0) {
+            hit = mids[i];
+            LogTo("  findMethodByArgDescriptor(%s): '%s'", args.c_str(), n ? n : "?");
+        }
+        if (n) g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(n));
+        if (s) g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(s));
+        if (g) g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(g));
     }
     g_jvmti->Deallocate(reinterpret_cast<unsigned char*>(mids));
     return hit;

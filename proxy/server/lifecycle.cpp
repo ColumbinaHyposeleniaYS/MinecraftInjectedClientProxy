@@ -1,5 +1,6 @@
 #include "internal.h"
 #include "relay_handler.h"
+#include "chat_notify.h"
 
 namespace proxy_server {
 
@@ -424,6 +425,10 @@ LiveConnectionState BServer_TryCaptureLiveConnection(JNIEnv* env) {
     }
     BServer_SetTargetConnection(env, conn);
     env->DeleteLocalRef(conn);
+
+    // A was already in PLAY when we captured its connection, so the one-shot
+    // ready message likely failed earlier with no A target. Retry it now.
+    ChatNotify_NotifyProxyReady(env);
 
     server.midSession.store(true, std::memory_order_release);
     LogTo("mid-session: captured A's live Connection + attached relay (A already in-game)");

@@ -1,12 +1,16 @@
 # Minecraft Injected Client Proxy
 
-Minecraft 1.20.1 客户端反向代理的完整桌面套件：**macOS 风格图形界面**（注入器 / 控制台）+ **Proxy.dll 代理核心**（源码随仓库分发，并已内置进 GUI 程序，无需单独携带 DLL）。
+Minecraft 客户端反向代理的完整桌面套件：**macOS 风格图形界面**（注入器 / 控制台）+ **Proxy.dll 代理核心**（源码随仓库分发，并已内置进 GUI 程序，无需单独携带 DLL）。
+
+> **版本支持状态**
+> - **1.20.1**：已实测稳定的主要支持版本。
+> - **1.21.10 NeoForge**：**理论适配，尚未实机验证**。代码层面已完成版本探测（SharedConstants / `configureSerialization` 结构探针）、`RegistryFriendlyByteBuf`、登录包构造签名探测、以及 CustomPayload `common` 包迁移，但**没有做过真机测试**；`CommonPlayerSpawnInfo` 的构造签名仍需在实际客户端上核对。请把它当作实验性功能：遇到问题请附 `proxy.log` 反馈，或退回 1.20.1。
 
 **GUI 为原生 Win32 + GDI+ 实现，无任何运行时依赖** —— 不需要 Qt、.NET 或 VC++ 运行库；exe 与 DLL 均静态链接 CRT，解压即用。
 
 ## 它做什么
 
-- **A 客户端**：运行 Minecraft 1.20.1 并进入目标服务器（本工具把代理 DLL 注入到这个进程）
+- **A 客户端**：运行 Minecraft 1.20.1 或 1.21.10 NeoForge 并进入目标服务器（本工具把代理 DLL 注入到这个进程）
 - **B 客户端**：使用「直接连接」访问 `127.0.0.1:25565`，与 A 共享同一条会话
 - 本程序负责：定位目标窗口 → 注入 `Proxy.dll` → 探测代理端口就绪 → 实时查看代理日志
 
@@ -63,7 +67,7 @@ GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Proxy.dll，仅生成 
 ## 使用方法
 
 1. 下载 Release 压缩包并解压到任意目录（Proxy.dll 代理核心已内置在程序中，无需额外获取）
-2. 启动 A 客户端（Minecraft 1.20.1）并进入目标服务器
+2. 启动 A 客户端（Minecraft 1.20.1 或 1.21.10 NeoForge）并进入目标服务器
 3. 点击「一键注入」；若游戏以管理员身份运行，请在「关于」页以管理员身份重启本程序
 4. B 客户端「直接连接」`127.0.0.1:25565`（局域网内使用总览页显示的本机 IP）
 
@@ -75,7 +79,7 @@ GUI 也可在 MinGW-w64 工具链下构建（此时跳过 Proxy.dll，仅生成 
 
 代理核心源码位于 `proxy/`，随仓库一起构建，Release 自动打包，无需另外获取。
 
-- 仅供注入到 Minecraft 1.20.1 客户端（x64 Java 进程），反射式加载、驻留游戏进程
+- 仅供注入到 Minecraft 1.20.1 / 1.21.10 NeoForge 客户端（x64 Java 进程），反射式加载、驻留游戏进程
 - 恢复信号契约：DLL 在目标进程内创建 `MinecraftInjectedClientProxy.Resume.v1.<pid>` 命名事件；GUI 侧同时兼容旧版 `SakuraTools` 前缀
 - 本程序仅使用内置代理核心；如需替换为自编译版本，请自行修改源码后重新构建
 

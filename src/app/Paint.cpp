@@ -668,7 +668,7 @@ static void PaintAbout(Gdiplus::Graphics& g, const Layout& L)
         ui::Text(g, v, FSmall, pal.text2, pill, ui::Align::Center);
     }
 
-    ui::Text(g, lang::Tr(lang::Str::AbTagline), // Minecraft 1.20.1 客户端反向代理 · 注入与管理工具
+    ui::Text(g, lang::Tr(lang::Str::AbTagline), // Minecraft 1.20.1 / 1.21.10 NeoForge 客户端反向代理 · 注入与管理工具
              FBody, pal.text2, L.abTag, ui::Align::Center);
 
     const float fy = L.abFoot.y + float(S(6));

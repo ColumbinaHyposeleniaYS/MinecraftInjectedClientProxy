@@ -129,7 +129,23 @@ void sendSelfInfoToB(JNIEnv* env, jobject offlineUuid, jstring name) {
         env->DeleteLocalRef(props);
         return;
     }
-    jobject buf = env->NewObject(server.refs.friendlyBufCls, server.refs.friendlyBufCtor, bb);
+    jobject buf = nullptr;
+    if (server.refs.registryBufCls && server.refs.registryBufCtor && server.refs.cplRegistryAccessMid &&
+        server.refs.mcGetConnectionMid) {
+        jobject mcForRegistry = env->CallStaticObjectMethod(server.refs.minecraftCls, server.refs.mcGetInstanceMid);
+        jobject listenerForRegistry = mcForRegistry
+            ? env->CallObjectMethod(mcForRegistry, server.refs.mcGetConnectionMid) : nullptr;
+        jobject registryAccess = listenerForRegistry
+            ? env->CallObjectMethod(listenerForRegistry, server.refs.cplRegistryAccessMid) : nullptr;
+        if (registryAccess && !env->ExceptionCheck())
+            buf = env->NewObject(server.refs.registryBufCls, server.refs.registryBufCtor, bb, registryAccess);
+        else if (env->ExceptionCheck())
+            env->ExceptionClear();
+        if (listenerForRegistry) env->DeleteLocalRef(listenerForRegistry);
+        if (mcForRegistry) env->DeleteLocalRef(mcForRegistry);
+    }
+    if (!buf && !env->ExceptionCheck())
+        buf = env->NewObject(server.refs.friendlyBufCls, server.refs.friendlyBufCtor, bb);
     env->DeleteLocalRef(bb);
     if (!buf || env->ExceptionCheck()) {
         env->ExceptionClear();

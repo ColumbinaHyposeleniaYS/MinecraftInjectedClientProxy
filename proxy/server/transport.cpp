@@ -112,8 +112,13 @@ void JNICALL Native_ServerInit_initChannel(JNIEnv* env, jobject, jobject ch) {
 
     setProtocolState(env, ch, server.refs.protoHandshaking);
 
-    env->CallStaticVoidMethod(server.refs.connectionCls, server.refs.connectionConfigureSerMid, pipeline,
-                              server.refs.flowServerbound);
+    if (server.refs.connectionConfigureModern) {
+        env->CallStaticVoidMethod(server.refs.connectionCls, server.refs.connectionConfigureSerMid, pipeline,
+                                   server.refs.flowServerbound, JNI_FALSE, (jobject)nullptr);
+    } else {
+        env->CallStaticVoidMethod(server.refs.connectionCls, server.refs.connectionConfigureSerMid, pipeline,
+                                   server.refs.flowServerbound);
+    }
     if (env->ExceptionCheck()) {
         LogAndClearException(env, "  configureSerialization");
     }

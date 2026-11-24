@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proxy.h"
+#include "version_detect.h"
 
 namespace proxy_server {
 
@@ -121,6 +122,13 @@ struct JavaBindings {
     jfieldID mcOptionsFid = nullptr;
     jclass optionsCls = nullptr;
     jfieldID optionsLanguageFid = nullptr;
+
+    // Version-dependent bindings (detected once at startup).
+    McVersion version = McVersion::Unknown;
+    bool connectionConfigureModern = false;
+    jclass registryBufCls = nullptr;
+    jmethodID registryBufCtor = nullptr;
+    jmethodID cplRegistryAccessMid = nullptr;
 };
 
 } // namespace proxy_server

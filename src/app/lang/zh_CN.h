@@ -95,7 +95,7 @@ static const wchar_t* const zh_CN[] = {
     /* LinesFiltered      */ L"%d / %d \u884c",
     /* LogsEmpty          */ L"\u6682\u65e0\u65e5\u5fd7\uff0c\u7b49\u5f85\u4ee3\u7406\u8f93\u51fa\u2026",
     /* AbVersionPill      */ L"v%s \u00b7 \u539f\u751f Win32 \u5355\u6587\u4ef6",
-    /* AbTagline          */ L"Minecraft 1.20.1 \u5ba2\u6237\u7aef\u53cd\u5411\u4ee3\u7406 \u00b7 \u6ce8\u5165\u4e0e\u7ba1\u7406\u5de5\u5177",
+    /* AbTagline          */ L"Minecraft 1.20.1 / 1.21.10 NeoForge \u5ba2\u6237\u7aef\u53cd\u5411\u4ee3\u7406 \u00b7 \u6ce8\u5165\u4e0e\u7ba1\u7406\u5de5\u5177",
     /* AbLine1            */ L"\u539f\u751f Win32 / GDI+ \u00b7 \u65e0\u4efb\u4f55\u8fd0\u884c\u65f6\u4f9d\u8d56 \u00b7 \u5355\u6587\u4ef6 exe",
     /* AbLine2            */ L"\u4ee3\u7406\u6838\u5fc3 Proxy.dll \u5df2\u5185\u7f6e\uff0c\u65e0\u9700\u989d\u5916 DLL",
     /* AbLine3            */ L"\u4ec5\u4f9b\u5b66\u4e60\u4ea4\u6d41\u4f7f\u7528\uff0c\u8bf7\u9075\u5b88 Minecraft EULA \u4e0e\u76ee\u6807\u670d\u52a1\u5668\u89c4\u5219",

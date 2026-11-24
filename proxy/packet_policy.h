@@ -13,7 +13,12 @@ inline bool isGamePacket(std::string_view name) {
 
 inline bool isOwnedByA(std::string_view name) {
     return name == "net.minecraft.network.protocol.game.ServerboundKeepAlivePacket" ||
-           name == "net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket";
+           name == "net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket" ||
+           // 1.20.2+ moved these two into the common namespace. They are already
+           // covered by !isGamePacket in allowFromA / allowFromB; listed here so
+           // the "A owns the heartbeat + mod handshake" rule stays explicit.
+           name == "net.minecraft.network.protocol.common.ServerboundKeepAlivePacket" ||
+           name == "net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket";
 }
 
 inline bool allowFromA(std::string_view name, bool bActive) {

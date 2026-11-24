@@ -105,8 +105,20 @@ static bool cacheProtocolBindings(JNIEnv* env, jobject mcLoader) {
     if (!connCls)
         return false;
     server.refs.connectionCls = static_cast<jclass>(env->NewGlobalRef(connCls));
-    server.refs.connectionConfigureSerMid = findMethodByDescriptor(
-        connCls, "(Lio/netty/channel/ChannelPipeline;Lnet/minecraft/network/protocol/PacketFlow;)V", true);
+    server.refs.version = DetectMcVersion(env, mcLoader, connCls);
+    LogTo("BServer: detected Minecraft %s", McVersionName(server.refs.version));
+    if (server.refs.version == McVersion::V1_21_10) {
+        server.refs.connectionConfigureModern = true;
+        server.refs.connectionConfigureSerMid = findMethodByDescriptor(
+            connCls, "(Lio/netty/channel/ChannelPipeline;Lnet/minecraft/network/protocol/PacketFlow;ZLnet/minecraft/network/BandwidthDebugMonitor;)V", true);
+    }
+    if (!server.refs.connectionConfigureSerMid) {
+        server.refs.connectionConfigureModern = false;
+        server.refs.connectionConfigureSerMid = findMethodByDescriptor(
+            connCls, "(Lio/netty/channel/ChannelPipeline;Lnet/minecraft/network/protocol/PacketFlow;)V", true);
+        if (server.refs.connectionConfigureSerMid && server.refs.version == McVersion::Unknown)
+            server.refs.version = McVersion::V1_20_1;
+    }
     server.refs.connectionSendMid =
         findMethodByDescriptor(connCls, "(Lnet/minecraft/network/protocol/Packet;)V", false);
     server.refs.connectionAttrProtocolFid = findFieldByDescriptor(connCls, "Lio/netty/util/AttributeKey;", true);
@@ -312,6 +324,23 @@ static void cacheBufferBindings(JNIEnv* env, jobject mcLoader) {
         server.refs.fbbWriteGpPropsMid =
             findMethodByDescriptor(fbbCls, "(Lcom/mojang/authlib/properties/PropertyMap;)V", false);
         env->DeleteLocalRef(fbbCls);
+        if (server.refs.version == McVersion::V1_21_10) {
+            jclass rbufCls = loadOrFind(env, mcLoader, "net.minecraft.network.RegistryFriendlyByteBuf",
+                                        "Lnet/minecraft/network/RegistryFriendlyByteBuf;");
+            if (rbufCls) {
+                server.refs.registryBufCls = static_cast<jclass>(env->NewGlobalRef(rbufCls));
+                server.refs.registryBufCtor = env->GetMethodID(rbufCls, "<init>",
+                    "(Lio/netty/buffer/ByteBuf;Lnet/minecraft/core/RegistryAccess;)V");
+                env->DeleteLocalRef(rbufCls);
+            }
+            jclass listenerCls = loadOrFind(env, mcLoader, "net.minecraft.client.multiplayer.ClientPacketListener",
+                "Lnet/minecraft/client/multiplayer/ClientPacketListener;");
+            if (listenerCls) {
+                server.refs.cplRegistryAccessMid =
+                    findMethodByDescriptor(listenerCls, "()Lnet/minecraft/core/RegistryAccess;", false);
+                env->DeleteLocalRef(listenerCls);
+            }
+        }
     }
     jclass unpCls = loadOrFind(env, mcLoader, "io.netty.buffer.Unpooled", "Lio/netty/buffer/Unpooled;");
     if (unpCls) {
@@ -328,12 +357,19 @@ static void cachePlayerPacketBindings(JNIEnv* env, jobject mcLoader) {
                                "Lnet/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket;");
     if (piuCls) {
         server.refs.playerInfoUpdatePacketCls = static_cast<jclass>(env->NewGlobalRef(piuCls));
-        server.refs.playerInfoUpdatePacketBufCtor =
-            env->GetMethodID(piuCls, "<init>", "(Lnet/minecraft/network/FriendlyByteBuf;)V");
+        const char* piuBufDesc = server.refs.registryBufCls
+            ? "(Lnet/minecraft/network/RegistryFriendlyByteBuf;)V"
+            : "(Lnet/minecraft/network/FriendlyByteBuf;)V";
+        server.refs.playerInfoUpdatePacketBufCtor = env->GetMethodID(piuCls, "<init>", piuBufDesc);
+        if (!server.refs.playerInfoUpdatePacketBufCtor && server.refs.registryBufCls) {
+            env->ExceptionClear();
+            piuBufDesc = "(Lnet/minecraft/network/FriendlyByteBuf;)V";
+            server.refs.playerInfoUpdatePacketBufCtor = env->GetMethodID(piuCls, "<init>", piuBufDesc);
+        }
 
         static const char* const kPacketWriteExcl[] = {"<init>"};
         server.refs.playerInfoUpdatePacketWriteMid = findMethodByDescriptorExcept(
-            piuCls, "(Lnet/minecraft/network/FriendlyByteBuf;)V", false, kPacketWriteExcl, 1);
+            piuCls, piuBufDesc, false, kPacketWriteExcl, 1);
 
         jmethodID listMids[2] = {nullptr, nullptr};
         int nList = findMethodsByDescriptor(piuCls, "()Ljava/util/List;", false, listMids, 2);
@@ -397,11 +433,25 @@ static void cachePlayerPacketBindings(JNIEnv* env, jobject mcLoader) {
         }
     }
 
-    jclass cpp = loadOrFind(env, mcLoader, "net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket",
-                            "Lnet/minecraft/network/protocol/game/ClientboundCustomPayloadPacket;");
-    if (cpp) {
-        server.refs.customPayloadPacketCls = static_cast<jclass>(env->NewGlobalRef(cpp));
-        env->DeleteLocalRef(cpp);
+    // ClientboundCustomPayloadPacket moved from protocol.game to protocol.common
+    // starting in 1.20.2 (Mojang network namespace split). Try the modern
+    // (common) package first so 1.21.x binds it, then fall back to the legacy
+    // game package for 1.20.1 / unknown versions. Both are harmless to probe:
+    // loadOrFind just logs a miss when a package is absent.
+    static const char* const kCppNames[] = {
+        "net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket",
+        "net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket",
+    };
+    static const char* const kCppSigs[] = {
+        "Lnet/minecraft/network/protocol/common/ClientboundCustomPayloadPacket;",
+        "Lnet/minecraft/network/protocol/game/ClientboundCustomPayloadPacket;",
+    };
+    for (int i = 0; i < 2 && !server.refs.customPayloadPacketCls; ++i) {
+        jclass cpp = loadOrFind(env, mcLoader, kCppNames[i], kCppSigs[i]);
+        if (cpp) {
+            server.refs.customPayloadPacketCls = static_cast<jclass>(env->NewGlobalRef(cpp));
+            env->DeleteLocalRef(cpp);
+        }
     }
 
     jclass sptCls = loadOrFind(env, mcLoader, "net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket",

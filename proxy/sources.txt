@@ -11,6 +11,7 @@ proxy/packet_filter.cpp
 proxy/chat_notify.cpp
 proxy/connection_hook.cpp
 proxy/server/state.cpp
+proxy/server/version_detect.cpp
 proxy/server/bindings.cpp
 proxy/server/transport.cpp
 proxy/server/lifecycle.cpp
