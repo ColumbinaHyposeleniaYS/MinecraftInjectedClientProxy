@@ -31,7 +31,7 @@ public:
 
 private:
     std::wstring m_keyword;
-    uint16_t m_port = 25565;
+    uint16_t m_port = 1314;
     DWORD m_pid = 0;
     bool m_wasActive = false;
 };

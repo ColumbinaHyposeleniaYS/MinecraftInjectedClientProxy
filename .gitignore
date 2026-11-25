@@ -15,3 +15,4 @@ out/
 
 # Local analysis scratch (not part of the build)
 .local/
+.tmp_analysis/

@@ -19,7 +19,7 @@ struct SettingsData
     int lang = -1;
 
     std::wstring keyword;   // window title keyword (default 布吉岛)
-    int port = 25565;
+    int port = 1314;
 
     bool autoSwitchOnDone = true; // jump to the log page after success
     bool toastOnDone = true;      // toast when a run finishes

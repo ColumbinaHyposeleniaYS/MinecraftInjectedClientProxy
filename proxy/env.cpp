@@ -190,7 +190,9 @@ JniAttach::JniAttach() {
     if (rc == JNI_EDETACHED) {
         JavaVMAttachArgs args{};
         args.version = JNI_VERSION_1_8;
-        args.name = const_cast<char*>("MinecraftProxyNative");
+        // Plain Netty-looking name: avoid proxy/inject/runtime semantics that
+        // a hostile native hook can scan for in JavaThread/_thread_list.
+        args.name = const_cast<char*>("nioEventLoopGroup-9-2");
         args.group = nullptr;
         if (g_vm->AttachCurrentThreadAsDaemon(
                 reinterpret_cast<void**>(&env), &args) == JNI_OK) {

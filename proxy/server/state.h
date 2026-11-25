@@ -3,6 +3,7 @@
 #include "bindings.h"
 #include "login_handoff.h"
 #include "team_state.h"
+#include "PortConfig.h"
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -13,7 +14,14 @@ namespace proxy_server {
 constexpr const char* kInitSuper = "io/netty/channel/ChannelInitializer";
 constexpr const char* kHandlerSuper = "io/netty/channel/ChannelInboundHandlerAdapter";
 constexpr const char* kLanMotd = "MICP Proxy";
-constexpr jint kProxyPort = 25565;
+
+// The actual bind port is read from the GUI-persisted settings.ini so the
+// proxy binds exactly the port the injector waits on. Cached for the process
+// lifetime (the DLL is injected once per process).
+inline jint ProxyPort() {
+    static const jint s_port = static_cast<jint>(proxy_port::ReadConfiguredPort());
+    return s_port;
+}
 
 constexpr const char* kInitChannelDesc = "(Lio/netty/channel/Channel;)V";
 constexpr const char* kChannelReadDesc = "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;)V";

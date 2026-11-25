@@ -8,7 +8,6 @@
 #include "random_name.h"
 #include "runtime_gate.h"
 
-#include <atomic>
 #include <cstdio>
 #include <mutex>
 #include <string>
@@ -27,8 +26,6 @@ constexpr const char* kPromiseInternal = "io/netty/channel/ChannelPromise";
 constexpr const char* kChannelReadDesc = "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;)V";
 constexpr const char* kWriteDesc =
     "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;Lio/netty/channel/ChannelPromise;)V";
-
-std::atomic<uint64_t> g_channelSeq{0};
 
 std::mutex g_bypassMu;
 std::vector<jobject> g_bypassPending;
@@ -256,9 +253,12 @@ static bool attachHandlerToPipeline(JNIEnv* env, jobject pipeline) {
             ++it;
         }
     }
-    uint64_t seq = ++g_channelSeq;
-    char nameBuf[64];
-    std::snprintf(nameBuf, sizeof(nameBuf), "proxy_relay_%llu", static_cast<unsigned long long>(seq));
+    // Handler name used to be "proxy_relay_<n>" - a fixed prefix any anti-cheat
+    // could enumerate via channel.pipeline().names(). Derive it from random_name
+    // instead; GenerateRandomClassName already folds in a per-process counter so
+    // each attach gets a distinct, dictionary-free Netty handler name.
+    std::string handlerName = GenerateRandomClassName(2, 3);
+    const char* nameBuf = handlerName.c_str();
     jstring name = env->NewStringUTF(nameBuf);
 
     jobject handler = env->NewObject(g_relay.klass, g_relay.ctor);

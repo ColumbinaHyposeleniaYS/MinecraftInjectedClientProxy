@@ -19,7 +19,7 @@ public:
     struct Config
     {
         std::wstring keyword;
-        uint16_t port = 25565;
+        uint16_t port = 1314;
     };
 
     struct Progress

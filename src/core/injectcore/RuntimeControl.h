@@ -14,9 +14,12 @@
 #include <windows.h>
 #include <stdio.h>
 
-#define MICP_RESUME_PREFIX         "Local\\MinecraftInjectedClientProxy.Resume.v1."
+// Opaque, product-neutral event names: a hostile module can enumerate local
+// kernel objects and match on the old "MinecraftInjectedClientProxy" prefix.
+// GUI and injected DLL share this header, so both sides stay in sync.
+#define MICP_RESUME_PREFIX         "Local\\{7f3a9c21-4e8b-4d6a-9f12-8b5c0d7e2a41}.r"
 #define MICP_RESUME_PREFIX_LEGACY  "Local\\SakuraTools.Resume.v1."
-#define MICP_DISCONNECT_PREFIX     "Local\\MinecraftInjectedClientProxy.Disconnect.v1."
+#define MICP_DISCONNECT_PREFIX     "Local\\{7f3a9c21-4e8b-4d6a-9f12-8b5c0d7e2a41}.d"
 
 /* 1: resident signalled, 0: no resident, -1: access/signalling failure. */
 static int TryResumeProxyWithPrefix(const char* cpPrefix, DWORD dwProcessId)

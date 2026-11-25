@@ -44,6 +44,28 @@ bool IsListening(DWORD pid, uint16_t port)
     return WalkTable(true, pid, port, [](const MIB_TCPROW_OWNER_PID&) { return true; });
 }
 
+bool IsPortBusyByOther(uint16_t port, DWORD exceptPid)
+{
+    const TCP_TABLE_CLASS tableId = TCP_TABLE_OWNER_PID_LISTENER;
+    ULONG size = 0;
+    DWORD rc = GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET, tableId, 0);
+    if (rc != ERROR_INSUFFICIENT_BUFFER || size == 0)
+        return false;
+
+    std::vector<BYTE> buffer(size);
+    auto* table = reinterpret_cast<PMIB_TCPTABLE_OWNER_PID>(buffer.data());
+    if (GetExtendedTcpTable(table, &size, FALSE, AF_INET, tableId, 0) != NO_ERROR)
+        return false;
+
+    for (DWORD i = 0; i < table->dwNumEntries; ++i)
+    {
+        const MIB_TCPROW_OWNER_PID& row = table->table[i];
+        if (HostPort(row.dwLocalPort) == port && row.dwOwningPid != exceptPid)
+            return true;
+    }
+    return false;
+}
+
 int EstablishedCount(DWORD pid, uint16_t port)
 {
     ULONG size = 0;

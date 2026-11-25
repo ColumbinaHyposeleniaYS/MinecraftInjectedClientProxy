@@ -5,6 +5,7 @@
 #include "core/Injector.h"
 #include "core/PortProbe.h"
 #include "core/ProcessFinder.h"
+#include "core/AppPaths.h"
 
 namespace micp {
 namespace {
@@ -113,6 +114,23 @@ void InjectionSequence::Run(Config config)
         Sleep(kPollIntervalMs);
     }
 
+    // ---- Early warning: is the chosen port already held by another process?
+    // The DLL binds 0.0.0.0:<port> inside the game process; if some other
+    // process already listens there, bind() fails and no listener ever appears.
+    // Detect that up front and tell the user how to fix it instead of leaving
+    // them to stare at a silent 30 s timeout.
+    if (PortProbe::IsPortBusyByOther(config.port, target.pid)) {
+        Progress p;
+        p.state = State::Failed;
+        p.pid = target.pid;
+        p.windowTitle = target.windowTitle;
+        p.ok = false;
+        p.message = FormatStr(lang::Tr(lang::Str::SeqPortBusy), unsigned(config.port));
+        m_running.store(false);
+        Publish(p, true);
+        return;
+    }
+
     // ---- Phase 2: inject / signal resident proxy -------------------------
     {
         Progress p;
@@ -121,6 +139,17 @@ void InjectionSequence::Run(Config config)
         p.windowTitle = target.windowTitle;
         p.message = lang::Tr(lang::Str::SeqInjectingMsg);
         Publish(p, false);
+    }
+
+    // Persist the configured port BEFORE injecting: the DLL reads [inject] port
+    // from this same settings.ini to pick its actual bind port. Write the exact
+    // value the wait loop below uses so the two can never drift apart (the
+    // Settings editor may not have flushed a freshly typed port to disk yet).
+    {
+        const std::wstring ini = AppPaths::SettingsIni();
+        wchar_t portText[16];
+        swprintf(portText, 16, L"%u", unsigned(config.port));
+        WritePrivateProfileStringW(L"inject", L"port", portText, ini.c_str());
     }
 
     // Inject the DLL embedded in this executable.
@@ -195,8 +224,15 @@ void InjectionSequence::Run(Config config)
     p.windowTitle = target.windowTitle;
     p.ok = false;
     p.resumed = result.resumed;
-    p.message = FormatStr(lang::Tr(lang::Str::SeqPortTimeout),
-                          kWaitPortTimeoutMs / 1000, unsigned(config.port));
+    // If a stale injected proxy is already listening on this port from a
+    // previous run it would have been detected before injection; reaching here
+    // with no listener most often means the DLL's bind failed (commonly a port
+    // collision) or the DLL never installed the B server. Point at both.
+    const bool busyNow = PortProbe::IsPortBusyByOther(config.port, target.pid);
+    p.message = busyNow
+        ? FormatStr(lang::Tr(lang::Str::SeqPortBusy), unsigned(config.port))
+        : FormatStr(lang::Tr(lang::Str::SeqPortTimeout),
+                    kWaitPortTimeoutMs / 1000, unsigned(config.port));
     m_running.store(false);
     Publish(p, true);
 }

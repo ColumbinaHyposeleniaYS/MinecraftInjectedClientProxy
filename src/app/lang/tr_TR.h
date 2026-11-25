@@ -121,6 +121,7 @@ static const wchar_t* const tr_TR[] = {
     /* SeqDoneMsg         */ L"Enjeksiyon tamamland\u0131, vekil %u \u00fczerinde dinliyor",
     /* SeqWaitPort        */ L"Vekilin %u \u00fczerinde dinlemeye ba\u015flamas\u0131 bekleniyor\u2026",
     /* SeqPortTimeout     */ L"Enjeksiyon tamamland\u0131 ama vekil %d saniye i\u00e7inde %u \u00fczerinde dinlemeye ba\u015flamad\u0131 \u2014 g\u00fcnl\u00fcklere bak\u0131n",
+    /* SeqPortBusy        */ L"Ba\u011flant\u0131 noktas\u0131 %u ba\u015fka bir program taraf\u0131ndan kullan\u0131l\u0131yor \u2014 vekil dinleyemez. Ayarlar b\u00f6l\u00fcm\u00fcnden portu de\u011fi\u015ftirip tekrar deneyin",
     /* ErrOpenDll         */ L"DLL dosyas\u0131 a\u00e7\u0131lamad\u0131 \u2014 yolun ge\u00e7erli oldu\u011funu kontrol edin",
     /* ErrDllSize         */ L"DLL dosyas\u0131n\u0131n boyutu okunamad\u0131 \u2014 dosya bozuk olabilir",
     /* ErrDllRead         */ L"DLL dosyas\u0131 okunamad\u0131",

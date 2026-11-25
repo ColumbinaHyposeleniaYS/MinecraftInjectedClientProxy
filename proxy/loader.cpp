@@ -1,9 +1,8 @@
 #include "proxy.h"
-#include "trampolines.h"
 #include "relay_handler.h"
-#include "connection_hook.h"
 #include "b_server.h"
 #include "chat_notify.h"
+#include "server/state.h" // ProxyPort() - actual bind port from GUI settings.ini
 #include "runtime_gate.h"
 #include "RuntimeControl.h" // resume-event contract shared with the GUI injector (src/core/injectcore)
 
@@ -22,18 +21,23 @@ bool deletePressed(DeleteKeyEdge& edge) {
 bool startSession(JNIEnv* env, DeleteKeyEdge& edge) {
     LogTo("START: enabling proxy");
     LogTo("BUILD: native-snapshot %s %s pid=%lu", __DATE__, __TIME__, GetCurrentProcessId());
+    // Wait for the game class loader, then attach the Netty relay directly.
+    // No class bytecode is rewritten: A is always captured mid-session via
+    // JNI (Minecraft.getConnection().channel.pipeline()), so a hostile native
+    // hook never sees a modified Connection.channelActive or a retransformed
+    // InstanceKlass/ConstantPool. This loop also keeps DEL-cancel responsive.
     bool installed = false;
     for (int i = 0; i < 240; ++i) {
         if (deletePressed(edge)) {
             LogTo("START: cancelled by DEL");
             return false;
         }
-        if (InstallHookBridge(env)) { installed = true; break; }
+        if (InstallRelayHandler(env)) { installed = true; break; }
         Sleep(100);
     }
-    if (!installed || !InstallRelayHandler(env)) return false;
+    if (!installed) return false;
     g_runtimeGate.start();
-    if (!InstallConnectionHook(env) || !InstallBServer(env)) return false;
+    if (!InstallBServer(env)) return false;
     LiveConnectionState connection = LiveConnectionState::Failed;
     for (int attempt = 0; attempt < 10; ++attempt) {
         if (deletePressed(edge)) return false;
@@ -47,10 +51,18 @@ bool startSession(JNIEnv* env, DeleteKeyEdge& edge) {
         LogTo("START: failed to resolve A's connection; proxy will suspend");
         return false;
     }
-    if (connection == LiveConnectionState::NotConnected &&
-        !BServer_BlockAMainThreadUntilBConnected(env)) return false;
+    if (connection == LiveConnectionState::NotConnected) {
+        // Pure mid-session design: A must already be in-game. Never block A's
+        // render thread waiting for B (BServer_BlockAMainThreadUntilBConnected
+        // was the cause of "A freezes when injected before joining"). Suspend
+        // cleanly instead; re-inject after A has joined a world.
+        LogTo("START: A is not connected yet; mid-session proxy needs A in-game. "
+              "Suspending (join a world, then inject again)");
+        return false;
+    }
     proxy_server::ChatNotify_ResetPaused();
-    LogTo("START: active on port 25565; DEL in A suspends the proxy");
+    LogTo("START: active on port %d; DEL in A suspends the proxy",
+          (int)proxy_server::ProxyPort());
     return true;
 }
 
@@ -72,9 +84,8 @@ bool stopSession(JNIEnv* env, bool userRequested = false) {
         return false;
     }
     bool stopped = StopBServer(env);
-    bool unhooked = UninstallConnectionHook(env);
     bool detached = RelayHandler_DetachAll(env);
-    stopped = stopped && unhooked && detached;
+    stopped = stopped && detached;
     if (stopped) {
         LogTo("STOP: suspended; run the injector again to reactivate");
         drainLogged = false;
@@ -117,7 +128,8 @@ DWORD WINAPI RuntimeThread(LPVOID) {
         }
     }
     JNIEnv* env = nullptr;
-    JavaVMAttachArgs args{JNI_VERSION_1_8, const_cast<char*>("MICPRuntime"), nullptr};
+    // Plain Netty-looking name, not "MICPRuntime": see env.cpp rationale.
+    JavaVMAttachArgs args{JNI_VERSION_1_8, const_cast<char*>("nioEventLoopGroup-3-1"), nullptr};
     if (!g_vm || g_vm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(&env), &args) != JNI_OK) {
         LogTo("Runtime: could not attach to JVM");
         CloseHandle(disconnect);

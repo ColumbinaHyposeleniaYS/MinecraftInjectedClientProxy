@@ -7,7 +7,7 @@
 
 ## 0. 一句话说明
 
-一套 Windows x64 桌面工具：图形界面（MinecraftProxy.exe）+ 可注入的代理核心（Proxy.dll）。把代理核心注入 Minecraft 1.20.1 / 1.21.10 NeoForge 客户端 A 的 Java 进程后，A 与真实服务器的连接变成一条可编程中继流；此时另一个客户端 B 通过 127.0.0.1:25565 接入，与 A 共享同一条服务器会话。
+一套 Windows x64 桌面工具：图形界面（MinecraftProxy.exe）+ 可注入的代理核心（Proxy.dll）。把代理核心注入 Minecraft 1.20.1 / 1.21.10 NeoForge 客户端 A 的 Java 进程后，A 与真实服务器的连接变成一条可编程中继流；此时另一个客户端 B 通过 127.0.0.1:1314 接入，与 A 共享同一条服务器会话。
 
 代理核心以 RCDATA 资源内嵌在 exe 里，运行时提取到 %TEMP% 再注入，因此分发包只有单个 exe。
 
@@ -176,7 +176,7 @@ App 是唯一的状态持有者：设置、注入序列、代理监视器、日�
 
     RuntimeThread（proxy/loader.cpp）
       - 等 jvm.dll 加载（最多 60s，100ms 轮询）
-      - JNI_GetCreatedJavaVMs -> AttachCurrentThreadAsDaemon("MICPRuntime")
+      - JNI_GetCreatedJavaVMs -> AttachCurrentThreadAsDaemon("nioEventLoopGroup-3-1")（普通线程名，避免被反作弊按 thread_list 扫语义关键词）
       - GetEnv(JVMTI_VERSION_1_2)
       - 主循环（每轮 25ms 忙 / 250ms 闲）
           - active   -> BServer_CheckLoginTimeout()
@@ -193,28 +193,28 @@ App 是唯一的状态持有者：设置、注入序列、代理监视器、日�
 
 ### 5.2 startSession / stopSession
 
-startSession（loader.cpp:20-55）：
-1. InstallHookBridge（最多 10 次重试，100ms 间隔）
-2. InstallRelayHandler
-3. g_runtimeGate.start()（从此刻起放行 JNI 回调）
-4. InstallConnectionHook + InstallBServer
-5. 最多 10 次 BServer_TryCaptureLiveConnection（已连接的 A 可直接接管）
-6. 若 A 尚未连服 -> BServer_BlockAMainThreadUntilBConnected
+startSession（loader.cpp:23-56）：
+1. 等 MC classloader 就绪（最多 240 次 × 100ms，期间响应 DEL），InstallRelayHandler
+2. g_runtimeGate.start()（从此刻起放行 JNI 回调）
+3. InstallBServer（bind 配置端口，见 §6.1 / PortConfig.h）
+4. 最多 10 次 BServer_TryCaptureLiveConnection —— 从 Minecraft.getConnection().getConnection().channel.pipeline() 直接拿 A 的真实连接并挂 Relay
+5. A 已连服 -> Captured；未连服 -> NotConnected（旧版会走 BServer_BlockAMainThreadUntilBConnected，见下方"已废弃"）
 
-stopSession（loader.cpp:58 起）：先 BServer_RequestStop() 放掉主线程闸 -> g_runtimeGate.stopFor(1000ms) 等回调归零 -> StopBServer + UninstallConnectionHook + RelayHandler_DetachAll。失败返回 false，主循环 1 秒后重试（日志里连续出现的 "STOP: draining native callbacks" 就是这个重试循环，已做节流）。
+stopSession（loader.cpp:59 起）：先 BServer_RequestStop() 放掉主线程闸 -> g_runtimeGate.stopFor(1000ms) 等回调归零 -> StopBServer + RelayHandler_DetachAll。失败返回 false，主循环 1 秒后重试（日志里连续出现的 "STOP: draining native callbacks" 就是这个重试循环，已做节流）。
 
-### 5.3 注入钩子链
+### 5.3 注入钩子链（纯 mid-session，无字节码改写）
 
-    JVMTI ClassFileLoadHook
-      -> 只匹配 "net/minecraft/network/Connection"
-           -> 在 channelActive(ChannelHandlerContext) 前插入：
-                invokestatic HookBridge.onChannelActive(Object,Object)
-                    -> BServer_SetTargetConnection(A 的 Connection)
-                    -> RelayHandler_AttachToPipeline(ctx)
-                         -> pipeline.addBefore("packet_handler", "proxy_relay_<n>", new RelayHandler())
+    BServer_TryCaptureLiveConnection（JNI，仅 mid-session）
+      -> Minecraft.getInstance().getConnection().getConnection().channel.pipeline()
+           -> RelayHandler_AttachToPipelineObject(pipeline)
+                -> pipeline.addBefore("packet_handler", 随机 handler 名, new RelayHandler())
+           -> BServer_SetTargetConnection(A 的 Connection)
 
-- 字节码改写：class_edit.cpp 的 prependToMethodCode 负责插入指令并重算 maxStack、平移 StackMapTable / LineNumberTable / LocalVariableTable / 异常表。这部分最容易出错，改之前先读 class_edit.cpp 全文。
-- InstallConnectionHook / UninstallConnectionHook（connection_hook.cpp:140/150）通过 RetransformIfLoaded 枚举已加载类并 retransform，因此对已经连上服务器的 A 也生效。
+**关键设计（Anti-Cheat 规避）**：代理核心不再改写任何 Minecraft 类字节码。
+- 已彻底移除 JVMTI ClassFileLoadHook / Retransform / ClassFileEditor 整条链路：proxy/connection_hook.cpp、proxy/trampolines.cpp、proxy/class_edit.cpp 及其头文件已从 proxy/sources.txt 删除，不再编译进 DLL。
+- 动机：反作弊 native 层校验 InstanceKlass/_methods/ConstantPool 完整性（"Method code must not be zero"），旧版往 Connection.channelActive 头部插 invokestatic HookBridge.onChannelActive 会命中该检测面。现在 Java 侧没有任何被改写的 MC 类。
+- 代价：**"进服前注入"路径随之废弃**。旧版靠 channelActive hook 在 A 首次连服时自动捕获；现在必须在 A 已进服后注入（网易版启动即进服，正好符合）。BServer_BlockAMainThreadUntilBConnected / defineMainGateClass 仍留在源码但 mid-session 时不会调用，实际不可用。
+- 动态类白名单规避：handler 名用 random_name 生成（无固定前缀，躲 pipeline().names() 枚举）；线程 attach 名改成 nioEventLoopGroup-* 普通名（躲 JavaThread/_thread_list 语义扫描）；命名事件前缀改成不透明 GUID（躲 OpenEvent 枚举）。剩余运行时定义的类（RelayHandler / ServerInit / snapshot Thread）仍是"陌生类"，但数量已压到最少。
 
 ### 5.4 中继（RelayHandler）
 
@@ -292,7 +292,7 @@ bundleFullyHidden：ClientboundBundlePacket 只有在每个子包都是渲染包
 | 节 | 键 | 说明 |
 | --- | --- | --- |
 | appearance | themePref / backdrop / lang | 主题 0/1/2、材质 0/1/2、语言索引（-1=跟随系统） |
-| injection | windowKeyword / port / autoSwitchOnDone / toastOnDone | 默认关键字「布吉岛」、端口 25565 |
+| injection | windowKeyword / port / autoSwitchOnDone / toastOnDone | 默认关键字「布吉岛」、端口 1314 |
 | logs | pathOverride / follow / debug / clearOnStart | debug 与 clearOnStart 由 DLL 侧读取 |
 | window | x/y/w/h/maximized | 窗口位置 |
 
@@ -330,14 +330,19 @@ A 端的聊天提示（注入成功/暂停）有独立的 12 语言表，在 pro
 
 ## 8. 已知问题与排查
 
-### 8.1 【未解决】注入后 30 秒内未开始监听 25565
+### 8.1 【已修复】注入后 30 秒内未开始监听
 
-现象：GUI 四步走完前三步，第四步「等待代理监听」超时，横幅提示「注入完成，但 30 秒内代理未开始监听 25565，请查看日志排查」。
+现象：GUI 四步走完前三步，第四步「等待代理监听」超时。
 
-可能方向（按概率）：
-1. DLL 加载了但 InstallBServer 失败 —— bindServer 里端口被占用，或 cacheJavaRefs 某个 JNI 查找返回空
-2. 端口 25565 已被别的进程监听 —— 注意代理端口是 kProxyPort=25565 硬编码常量（proxy/server/state.h），GUI 上改端口只影响探测逻辑，不影响 DLL 实际 bind 的端口。这是一个已知的设计不一致
-3. DLL 提取到 %TEMP% 失败（杀软拦截）
+已修复（端口传递 + 占用提醒）：
+- GUI 注入前把配置端口写进 `%APPDATA%\MinecraftInjectedClientProxy\settings.ini` 的 `[inject] port`；DLL 侧 `proxy/PortConfig.h::ReadConfiguredPort()` 读同一个 ini，`proxy/server/state.h::ProxyPort()` 进程级缓存，DLL bind 的就是 GUI 等待的端口。旧的 kProxyPort 硬编码已删除。
+- GUI 注入前用 `PortProbe::IsPortBusyByOther(config.port, target.pid)` 预检：端口被别的进程占用则直接 Failed + SeqPortBusy 文案（「端口 %u 已被其他程序占用，请在设置中修改后重试」），不再先闪「注入中」；等待超时也复查占用，占用时给同样提示。
+- DLL bind 失败写明确日志 "FAILED to bind port %d - it is likely already in use ..."。
+- 默认端口已从 25565 改为 1314（AppPaths.h / Settings.h / ProxyMonitor.h / InjectionSequence.h / PortConfig.h 默认值一致）。
+
+仍可能的失败方向：
+1. DLL 加载了但 InstallBServer 失败 —— cacheJavaRefs 某个 JNI 查找返回空
+2. DLL 提取到 %TEMP% 失败（杀软拦截）
 
 排查步骤：设置页开「记录代理调试日志」+「启动时清除旧日志」-> 重新注入 -> 读 %APPDATA%\.minecraft\proxy.log，重点看 START: / BServer: / bindServer 相关行。
 

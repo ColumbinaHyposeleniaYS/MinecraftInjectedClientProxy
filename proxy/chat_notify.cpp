@@ -238,7 +238,7 @@ void ChatNotify_NotifyProxyReady(JNIEnv* env) {
     if (!g_notified.compare_exchange_strong(expected, true))
         return;
 
-    const jint port = kProxyPort;
+    const jint port = proxy_server::ProxyPort();
     char buffer[160] = {0};
     std::snprintf(buffer, sizeof(buffer), PickMessage(ReadClientLanguage(env)), static_cast<unsigned>(port));
 

@@ -347,7 +347,7 @@ bool startLanAnnouncement(JNIEnv* env, jobject mcLoader) {
             start = env->GetMethodID(pingerCls, "start", "()V");
         if (start && !env->ExceptionCheck()) {
             char portText[8];
-            std::snprintf(portText, sizeof(portText), "%d", (int)kProxyPort);
+            std::snprintf(portText, sizeof(portText), "%d", (int)ProxyPort());
             jstring motd = env->NewStringUTF(kLanMotd);
             jstring port = nullptr;
             if (motd && !env->ExceptionCheck())
@@ -366,7 +366,7 @@ bool startLanAnnouncement(JNIEnv* env, jobject mcLoader) {
     LogAndClearException(env, "LAN/start announcement");
     env->PopLocalFrame(nullptr);
     if (started)
-        LogTo("LAN: announcing MOTD '%s', port %d", kLanMotd, (int)kProxyPort);
+        LogTo("LAN: announcing MOTD '%s', port %d", kLanMotd, (int)ProxyPort());
     else
         LogTo("LAN: announcement unavailable; direct connections remain available");
     return started;
@@ -407,7 +407,7 @@ bool bindServer(JNIEnv* env, jobject mcLoader) {
 
     jstring host = env->NewStringUTF("0.0.0.0");
     jobject isa =
-        env->NewObject(isaCls, env->GetMethodID(isaCls, "<init>", "(Ljava/lang/String;I)V"), host, kProxyPort);
+        env->NewObject(isaCls, env->GetMethodID(isaCls, "<init>", "(Ljava/lang/String;I)V"), host, ProxyPort());
     env->DeleteLocalRef(host);
 
     jobject future = env->CallObjectMethod(
@@ -431,6 +431,8 @@ bool bindServer(JNIEnv* env, jobject mcLoader) {
             return false;
         env->CallObjectMethod(future, env->GetMethodID(fCls, "sync", "()Lio/netty/channel/ChannelFuture;"));
         if (env->ExceptionCheck()) {
+            LogTo("BServer: FAILED to bind port %d - it is likely already in use by another program; "
+                  "close that program or change the port in Settings", (int)ProxyPort());
             LogAndClearException(env, "bind-sync");
             return false;
         }
@@ -439,7 +441,7 @@ bool bindServer(JNIEnv* env, jobject mcLoader) {
     }
     env->DeleteLocalRef(sb);
     env->DeleteLocalRef(elg);
-    LogTo("BServer: bound 0.0.0.0:25565 (all interfaces, LAN-wide)");
+    LogTo("BServer: bound 0.0.0.0:%d (all interfaces, LAN-wide)", (int)ProxyPort());
     return true;
 }
 

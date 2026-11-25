@@ -121,6 +121,7 @@ static const wchar_t* const pt_PT[] = {
     /* SeqDoneMsg         */ L"Inje\u00e7\u00e3o conclu\u00edda, proxy \u00e0 escuta em %u",
     /* SeqWaitPort        */ L"A aguardar que o proxy escute em %u\u2026",
     /* SeqPortTimeout     */ L"Inje\u00e7\u00e3o conclu\u00edda, mas ap\u00f3s %d s o proxy ainda n\u00e3o escutava em %u \u2013 consulte os registos",
+    /* SeqPortBusy        */ L"A porta %u j\u00e1 est\u00e1 em uso por outro programa \u2013 o proxy n\u00e3o pode escutar. Altere a porta em Defini\u00e7\u00f5es e tente novamente",
     /* ErrOpenDll         */ L"N\u00e3o foi poss\u00edvel abrir o ficheiro DLL \u2013 verifique se o caminho \u00e9 v\u00e1lido",
     /* ErrDllSize         */ L"N\u00e3o foi poss\u00edvel ler o tamanho do ficheiro DLL \u2013 o ficheiro pode estar corrompido",
     /* ErrDllRead         */ L"Falha ao ler o ficheiro DLL",
